@@ -18,6 +18,7 @@ import {
   updateTodo,
   validateHierarchyRules,
 } from "../../hooks/useTodos";
+import supabase from "../../lib/supabase";
 import ParentConfirmationDialog from "./ParentConfirmationDialog";
 
 const TodoFormModal = ({
@@ -66,15 +67,20 @@ const TodoFormModal = ({
       setAchievementNote(existingTodo.achievement_note || "");
 
       // Set parent based on what's available
-      if (existingTodo.parent_id) {
-        setSelectedParentId(existingTodo.parent_id);
+      // Check both mapped fields (parent_id, life_goal_id) and raw DB fields (parent_todo_id, parent_life_goal_id)
+      const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
+      const lifeGoalId =
+        existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
+
+      if (parentId) {
+        setSelectedParentId(parentId);
         setSelectedParentType("todo");
-        setPreviousParentId(existingTodo.parent_id);
+        setPreviousParentId(parentId);
         setPreviousParentType("todo");
-      } else if (existingTodo.life_goal_id) {
-        setSelectedParentId(existingTodo.life_goal_id);
+      } else if (lifeGoalId) {
+        setSelectedParentId(lifeGoalId);
         setSelectedParentType("life_goal");
-        setPreviousParentId(existingTodo.life_goal_id);
+        setPreviousParentId(lifeGoalId);
         setPreviousParentType("life_goal");
       } else {
         setSelectedParentId(null);
@@ -95,6 +101,75 @@ const TodoFormModal = ({
       fetchPossibleParents();
     }
   }, [taskType, visible, existingTodo?.id]);
+
+  // Re-sync parent selection after possibleParents are fetched
+  // This ensures parent is set even if possibleParents list hasn't loaded yet
+  useEffect(() => {
+    if (existingTodo && visible) {
+      const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
+      const lifeGoalId =
+        existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
+
+      // Always sync with existingTodo data - set parent even if not in possibleParents yet
+      // (parent might be completed or filtered, but we still want to show it)
+      if (parentId) {
+        // Convert to string for comparison
+        const parentIdStr = parentId?.toString();
+        const selectedParentIdStr = selectedParentId?.toString();
+
+        if (!selectedParentId || selectedParentIdStr !== parentIdStr) {
+          console.log("Setting parent from existingTodo:", {
+            parentId,
+            parentIdStr,
+            selectedParentId,
+            selectedParentIdStr,
+          });
+          setSelectedParentId(parentIdStr);
+          setSelectedParentType("todo");
+          if (
+            !previousParentId ||
+            previousParentId?.toString() !== parentIdStr
+          ) {
+            setPreviousParentId(parentIdStr);
+            setPreviousParentType("todo");
+          }
+        }
+      } else if (lifeGoalId) {
+        // Convert to string for comparison
+        const lifeGoalIdStr = lifeGoalId?.toString();
+        const selectedParentIdStr = selectedParentId?.toString();
+
+        if (!selectedParentId || selectedParentIdStr !== lifeGoalIdStr) {
+          console.log("Setting life goal from existingTodo:", {
+            lifeGoalId,
+            lifeGoalIdStr,
+            selectedParentId,
+            selectedParentIdStr,
+          });
+          setSelectedParentId(lifeGoalIdStr);
+          setSelectedParentType("life_goal");
+          if (
+            !previousParentId ||
+            previousParentId?.toString() !== lifeGoalIdStr
+          ) {
+            setPreviousParentId(lifeGoalIdStr);
+            setPreviousParentType("life_goal");
+          }
+        }
+      } else if (!parentId && !lifeGoalId && selectedParentId) {
+        // If existingTodo has no parent but we have selectedParentId, clear it
+        setSelectedParentId(null);
+        setSelectedParentType(null);
+      }
+    }
+  }, [
+    possibleParents,
+    existingTodo,
+    visible,
+    fetchingParents,
+    selectedParentId,
+    previousParentId,
+  ]);
 
   // Reset form function
   const resetForm = () => {
@@ -120,6 +195,65 @@ const TodoFormModal = ({
         taskType,
         existingTodo?.id || null
       );
+
+      // Add current parent to the list if it exists but not in the fetched list
+      // This handles cases where parent is completed or filtered but still should be selectable
+      if (existingTodo) {
+        const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
+        const lifeGoalId =
+          existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
+
+        if (parentId) {
+          const parentInList = parents?.some(
+            (p) =>
+              p.type === "todo" &&
+              (p.id === parentId || p.id?.toString() === parentId?.toString())
+          );
+
+          if (!parentInList) {
+            // Fetch the parent todo details to add it to the list
+            const { data: parentTodo } = await supabase
+              .from("todos")
+              .select("id, task_name, task_type")
+              .eq("id", parentId)
+              .single();
+
+            if (parentTodo) {
+              parents.push({
+                id: parentTodo.id,
+                task_name: parentTodo.task_name,
+                task_type: parentTodo.task_type,
+                type: "todo",
+              });
+            }
+          }
+        } else if (lifeGoalId) {
+          const goalInList = parents?.some(
+            (p) =>
+              p.type === "life_goal" &&
+              (p.id === lifeGoalId ||
+                p.id?.toString() === lifeGoalId?.toString())
+          );
+
+          if (!goalInList) {
+            // Fetch the life goal details to add it to the list
+            const { data: lifeGoal } = await supabase
+              .from("life_goals")
+              .select("id, name")
+              .eq("id", lifeGoalId)
+              .single();
+
+            if (lifeGoal) {
+              parents.push({
+                id: lifeGoal.id,
+                name: lifeGoal.name,
+                type: "life_goal",
+              });
+            }
+          }
+        }
+      }
+
       setPossibleParents(parents || []);
     } catch (error) {
       console.error("Error fetching possible parents:", error);
@@ -131,15 +265,22 @@ const TodoFormModal = ({
 
   // Handle parent change
   const handleParentChange = (value) => {
-    if (value === "none" || value === null) {
-      handleParentSelection(null, null);
+    // Handle null, undefined, empty string, or "none" - all mean no parent
+    if (!value || value === "none" || value === null) {
+      // Check if we're clearing a parent during edit (had a parent before)
+      if (existingTodo && (previousParentId || previousParentType)) {
+        setPendingParentChange({ id: null, type: null });
+        setShowParentChangeConfirm(true);
+      } else {
+        handleParentSelection(null, null);
+      }
       return;
     }
 
-    // Parse the value - format: "type:id" or just id
+    // Parse the value - format: "type:id"
     const parts = value.split(":");
     const parentType = parts[0];
-    const parentId = parts[1] || value;
+    const parentId = parts[1];
 
     // Check if parent is changing during edit
     if (
@@ -160,13 +301,31 @@ const TodoFormModal = ({
     setSelectedParentType(parentType);
 
     // Validate hierarchy
-    if (taskType && parentType) {
-      const validation = validateHierarchyRules(taskType, parentType);
+    if (taskType && parentId && parentType) {
+      // Find the actual parent to get its task_type
+      let actualParentType = parentType;
+
+      if (parentType === "todo") {
+        // Look up the todo parent's task_type
+        const parentTodo = possibleParents.find(
+          (p) => p.type === "todo" && p.id === parentId
+        );
+        if (parentTodo && parentTodo.task_type) {
+          actualParentType = parentTodo.task_type;
+        }
+      } else if (parentType === "life_goal") {
+        actualParentType = "life_goal";
+      }
+
+      const validation = validateHierarchyRules(taskType, actualParentType);
       if (!validation.isValid) {
         setErrors(validation.message);
       } else {
         setErrors(null);
       }
+    } else if (!parentId || !parentType) {
+      // No parent selected, clear errors
+      setErrors(null);
     }
   };
 
@@ -209,8 +368,23 @@ const TodoFormModal = ({
       return false;
     }
     // Check hierarchy validation
-    if (selectedParentType && taskType) {
-      const validation = validateHierarchyRules(taskType, selectedParentType);
+    if (selectedParentId && selectedParentType && taskType) {
+      // Find the actual parent to get its task_type
+      let actualParentType = selectedParentType;
+
+      if (selectedParentType === "todo") {
+        // Look up the todo parent's task_type
+        const parentTodo = possibleParents.find(
+          (p) => p.type === "todo" && p.id === selectedParentId
+        );
+        if (parentTodo && parentTodo.task_type) {
+          actualParentType = parentTodo.task_type;
+        }
+      } else if (selectedParentType === "life_goal") {
+        actualParentType = "life_goal";
+      }
+
+      const validation = validateHierarchyRules(taskType, actualParentType);
       if (!validation.isValid) {
         return false;
       }
@@ -284,7 +458,14 @@ const TodoFormModal = ({
 
   // Format picker items
   const formatPickerItems = () => {
-    const items = [{ label: "None", value: "none", key: "none" }];
+    const items = [];
+
+    // // Add placeholder as first item (to clear parent selection)
+    // items.push({
+    //   label: "Select parent (optional)",
+    //   value: null,
+    //   key: "placeholder",
+    // });
 
     // Group by type
     const todoParents = possibleParents.filter((p) => p.type === "todo");
@@ -292,44 +473,30 @@ const TodoFormModal = ({
       (p) => p.type === "life_goal"
     );
 
-    if (lifeGoalParents.length > 0) {
+    // Add life goals
+    lifeGoalParents.forEach((parent) => {
       items.push({
-        label: "── Life Goals ──",
-        value: "header_life_goals",
-        key: "header_life_goals",
-        disabled: true,
+        label: parent.name || parent.title,
+        value: `life_goal:${parent.id}`,
+        key: `life_goal_${parent.id}`,
       });
-      lifeGoalParents.forEach((parent) => {
-        items.push({
-          label: parent.name || parent.title,
-          value: `life_goal:${parent.id}`,
-          key: `life_goal_${parent.id}`,
-        });
-      });
-    }
+    });
 
-    if (todoParents.length > 0) {
+    // Add todo parents
+    todoParents.forEach((parent) => {
       items.push({
-        label: "── Todo Parents ──",
-        value: "header_todos",
-        key: "header_todos",
-        disabled: true,
+        label: `${parent.title || parent.task_name} (${parent.task_type})`,
+        value: `todo:${parent.id}`,
+        key: `todo_${parent.id}`,
       });
-      todoParents.forEach((parent) => {
-        items.push({
-          label: `${parent.title || parent.task_name} (${parent.task_type})`,
-          value: `todo:${parent.id}`,
-          key: `todo_${parent.id}`,
-        });
-      });
-    }
+    });
 
     return items;
   };
 
   const getSelectedParentValue = () => {
     if (!selectedParentId || !selectedParentType) {
-      return "none";
+      return null; // Return null to show placeholder
     }
     return `${selectedParentType}:${selectedParentId}`;
   };
@@ -469,9 +636,9 @@ const TodoFormModal = ({
                   onValueChange={handleParentChange}
                   items={formatPickerItems()}
                   value={getSelectedParentValue()}
-                  placeholder={{
-                    label: "Select parent (optional)",
-                    value: null,
+                  useNativeAndroidPickerStyle={false}
+                  pickerProps={{
+                    accessibilityLabel: "Select parent",
                   }}
                   style={{
                     inputIOS: styles.pickerInput,

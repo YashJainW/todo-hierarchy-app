@@ -9,11 +9,11 @@ const ParentConfirmationDialog = ({
   newParent,
   oldParent,
 }) => {
+  const isRemovingParent =
+    !newParent || (!newParent.id && !newParent.name && !newParent.task_name);
+
   const newParentName =
-    newParent?.name ||
-    newParent?.title ||
-    newParent?.task_name ||
-    "the selected parent";
+    newParent?.name || newParent?.title || newParent?.task_name || null;
 
   const oldParentName =
     oldParent?.name || oldParent?.title || oldParent?.task_name || null;
@@ -21,15 +21,26 @@ const ParentConfirmationDialog = ({
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onCancel} style={styles.dialog}>
-        <Dialog.Title>Change Parent?</Dialog.Title>
+        <Dialog.Title>
+          {isRemovingParent ? "Remove Parent?" : "Change Parent?"}
+        </Dialog.Title>
         <Dialog.Content>
-          <Text style={styles.message}>
-            Are you sure you want to move this task to "{newParentName}"?
-          </Text>
-          {oldParentName && (
-            <Text style={styles.secondaryMessage}>
-              This will remove it from "{oldParentName}".
+          {isRemovingParent ? (
+            <Text style={styles.message}>
+              Are you sure you want to remove this task from "{oldParentName}"?
+              It will no longer have a parent.
             </Text>
+          ) : (
+            <>
+              <Text style={styles.message}>
+                Are you sure you want to move this task to "{newParentName}"?
+              </Text>
+              {oldParentName && (
+                <Text style={styles.secondaryMessage}>
+                  This will remove it from "{oldParentName}".
+                </Text>
+              )}
+            </>
           )}
         </Dialog.Content>
         <Dialog.Actions>
@@ -39,7 +50,7 @@ const ParentConfirmationDialog = ({
             mode="contained"
             style={styles.moveButton}
           >
-            Move
+            {isRemovingParent ? "Remove" : "Move"}
           </Button>
         </Dialog.Actions>
       </Dialog>

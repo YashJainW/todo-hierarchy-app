@@ -253,10 +253,40 @@ export const createTodo = async (todoData) => {
       }
     }
 
+    // Map frontend column names to database column names
     const insertData = {
-      ...todoData,
+      task_name: todoData.task_name || todoData.title,
+      description: todoData.description || null,
+      priority: todoData.priority || null,
+      task_type: todoData.task_type,
+      state: todoData.state || "not_started",
+      due_date: todoData.due_date || null,
+      achievement_note: todoData.achievement_note || null,
       user_id: user.id,
     };
+
+    // Map parent_id to parent_todo_id and life_goal_id to parent_life_goal_id
+    if (todoData.parent_id) {
+      insertData.parent_todo_id = todoData.parent_id;
+      insertData.parent_life_goal_id = null;
+      delete insertData.parent_id; // Remove to avoid sending invalid column
+      delete insertData.life_goal_id; // Remove to avoid sending invalid column
+    } else if (todoData.life_goal_id) {
+      insertData.parent_life_goal_id = todoData.life_goal_id;
+      insertData.parent_todo_id = null;
+      delete insertData.parent_id; // Remove to avoid sending invalid column
+      delete insertData.life_goal_id; // Remove to avoid sending invalid column
+    } else {
+      insertData.parent_todo_id = null;
+      insertData.parent_life_goal_id = null;
+      delete insertData.parent_id; // Remove to avoid sending invalid column
+      delete insertData.life_goal_id; // Remove to avoid sending invalid column
+    }
+
+    // Remove any title field if it exists (we use task_name)
+    if (insertData.title) {
+      delete insertData.title;
+    }
 
     const { data, error } = await supabase
       .from("todos")
@@ -275,6 +305,132 @@ export const createTodo = async (todoData) => {
       data: null,
       error: error.message || "Failed to create todo",
     };
+  }
+};
+
+// Helper function to recursively uncheck parent when child is unchecked
+const cascadeUncheckParent = async (childId) => {
+  try {
+    // Get user ID
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      return;
+    }
+
+    // Get the child task to find its parent
+    const { data: childTask, error: childError } = await supabase
+      .from("todos")
+      .select("parent_todo_id, state")
+      .eq("id", childId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (childError || !childTask || !childTask.parent_todo_id) {
+      // No parent or error, stop cascading
+      return;
+    }
+
+    // Get the parent task
+    const { data: parentTask, error: parentError } = await supabase
+      .from("todos")
+      .select("id, state")
+      .eq("id", childTask.parent_todo_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (parentError || !parentTask) {
+      console.error("Error fetching parent:", parentError);
+      return;
+    }
+
+    // If parent is completed, change it to in_progress
+    if (parentTask.state === "completed") {
+      const { error: updateError } = await supabase
+        .from("todos")
+        .update({
+          state: "in_progress",
+          completed_at: null, // Clear completed_at since it's no longer completed
+        })
+        .eq("id", parentTask.id);
+
+      if (updateError) {
+        console.error("Error updating parent:", updateError);
+        return;
+      }
+
+      // Recursively cascade up to grandparent
+      await cascadeUncheckParent(parentTask.id);
+    }
+  } catch (error) {
+    console.error("Error in cascadeUncheckParent:", error);
+  }
+};
+
+// Helper function to recursively uncheck all children
+const cascadeUncheckChildren = async (parentId) => {
+  try {
+    // Get user ID
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      return;
+    }
+
+    // Get all direct children
+    const { data: children, error: childrenError } = await supabase
+      .from("todos")
+      .select("id, state")
+      .eq("parent_todo_id", parentId)
+      .eq("user_id", user.id);
+
+    if (childrenError) {
+      console.error("Error fetching children:", childrenError);
+      return;
+    }
+
+    if (!children || children.length === 0) {
+      return;
+    }
+
+    // Uncheck all children that are currently completed
+    const childrenToUncheck = children.filter(
+      (child) => child.state === "completed"
+    );
+
+    if (childrenToUncheck.length > 0) {
+      // Update all completed children to not_started
+      const { error: updateError } = await supabase
+        .from("todos")
+        .update({
+          state: "not_started",
+          completed_at: null,
+        })
+        .in(
+          "id",
+          childrenToUncheck.map((c) => c.id)
+        );
+
+      if (updateError) {
+        console.error("Error unchecking children:", updateError);
+        return;
+      }
+
+      // Recursively uncheck grandchildren
+      for (const child of childrenToUncheck) {
+        await cascadeUncheckChildren(child.id);
+      }
+    }
+  } catch (error) {
+    console.error("Error in cascadeUncheckChildren:", error);
   }
 };
 
@@ -307,8 +463,52 @@ export const updateTodo = async (id, updates) => {
       // If state changing from 'completed', set completed_at to null
       if (currentState === "completed" && newState !== "completed") {
         updateData.completed_at = null;
+
+        // Cascade uncheck to all children (down the hierarchy)
+        await cascadeUncheckChildren(id);
+
+        // Cascade uncheck to parent (up the hierarchy)
+        await cascadeUncheckParent(id);
       }
     }
+
+    // Map frontend column names to database column names
+    // Handle task_name/title mapping
+    if (updates.title || updates.task_name) {
+      updateData.task_name = updates.task_name || updates.title;
+      delete updateData.title; // Always remove title, we don't have this column
+    }
+
+    // Map parent_id to parent_todo_id and handle life_goal_id mapping
+    if (updates.parent_id !== undefined) {
+      updateData.parent_todo_id = updates.parent_id;
+      delete updateData.parent_id;
+      // If parent_id is set, clear parent_life_goal_id
+      if (updates.parent_id) {
+        updateData.parent_life_goal_id = null;
+      }
+    }
+    if (updates.life_goal_id !== undefined) {
+      updateData.parent_life_goal_id = updates.life_goal_id;
+      delete updateData.life_goal_id;
+      // If life_goal_id is set, clear parent_todo_id
+      if (updates.life_goal_id) {
+        updateData.parent_todo_id = null;
+      }
+    }
+    // If both are null/undefined, ensure both database columns are null
+    if (
+      updates.parent_id === null &&
+      (updates.life_goal_id === null || updates.life_goal_id === undefined)
+    ) {
+      updateData.parent_todo_id = null;
+      updateData.parent_life_goal_id = null;
+    }
+
+    // Remove any fields that don't exist in the database schema
+    delete updateData.title; // Remove title - we use task_name
+    delete updateData.parent_id; // Remove parent_id - we use parent_todo_id
+    delete updateData.life_goal_id; // Remove life_goal_id - we use parent_life_goal_id
 
     const { data, error } = await supabase
       .from("todos")
@@ -334,23 +534,43 @@ export const updateTodo = async (id, updates) => {
 // Delete a todo
 export const deleteTodo = async (id, showAlert = true) => {
   try {
+    // Get the task to check for parent and children
+    const { data: todo, error: todoError } = await supabase
+      .from("todos")
+      .select("parent_todo_id, parent_life_goal_id")
+      .eq("id", id)
+      .single();
+
+    if (todoError) {
+      throw todoError;
+    }
+
     // Check if todo has children
     const { data: children, error: childrenError } = await supabase
       .from("todos")
-      .select("id, title")
-      .eq("parent_id", id);
+      .select("id, task_name")
+      .eq("parent_todo_id", id);
 
     if (childrenError) {
       console.warn("Error checking children:", childrenError);
     }
 
-    if (children && children.length > 0) {
-      // If showAlert is true, show Alert confirmation
+    const hasChildren = children && children.length > 0;
+    const hasParent = todo.parent_todo_id || todo.parent_life_goal_id;
+
+    // If task has children, show options to handle them
+    if (hasChildren) {
+      // If showAlert is true, show Alert with options
       if (showAlert) {
         return new Promise((resolve) => {
+          // Determine the default action text based on whether there's a parent
+          const defaultActionText = hasParent
+            ? "Reparent to Parent"
+            : "Clear References";
+
           Alert.alert(
             "Delete Todo",
-            `This todo has ${children.length} child todo(s). Deleting it will also delete all children. Do you want to continue?`,
+            `This todo has ${children.length} child todo(s). What would you like to do with the children?`,
             [
               {
                 text: "Cancel",
@@ -359,10 +579,25 @@ export const deleteTodo = async (id, showAlert = true) => {
                   resolve({ data: null, error: "Deletion cancelled" }),
               },
               {
-                text: "Delete All",
+                text: defaultActionText,
+                onPress: async () => {
+                  if (hasParent) {
+                    // Reparent children to the deleted task's parent
+                    const result = await performDelete(id, children);
+                    resolve(result);
+                  } else {
+                    // Clear parent references from children
+                    const result = await performDelete(id, children, true);
+                    resolve(result);
+                  }
+                },
+              },
+              {
+                text: "Delete All (Cascade)",
                 style: "destructive",
                 onPress: async () => {
-                  const result = await performDelete(id);
+                  // Cascade delete all children
+                  const result = await performDelete(id, children, false, true);
                   resolve(result);
                 },
               },
@@ -371,11 +606,12 @@ export const deleteTodo = async (id, showAlert = true) => {
         });
       }
 
-      // If showAlert is false, return error asking for confirmation
-      return {
-        data: null,
-        error: `Cannot delete todo. It has ${children.length} child todo(s). Please confirm cascade delete.`,
-      };
+      // If showAlert is false, default based on whether there's a parent
+      if (hasParent) {
+        return await performDelete(id, children);
+      } else {
+        return await performDelete(id, children, true);
+      }
     }
 
     // No children, proceed with deletion
@@ -390,8 +626,128 @@ export const deleteTodo = async (id, showAlert = true) => {
 };
 
 // Helper function to perform the actual delete
-const performDelete = async (id) => {
+const performDelete = async (
+  id,
+  children = null,
+  clearReferences = false,
+  cascadeDelete = false
+) => {
   try {
+    // If cascade delete is requested, delete all children recursively first
+    if (cascadeDelete && children && children.length > 0) {
+      // Recursively delete all children (cascade)
+      for (const child of children) {
+        // Get child's children for recursive deletion
+        const { data: grandChildren } = await supabase
+          .from("todos")
+          .select("id")
+          .eq("parent_todo_id", child.id);
+
+        if (grandChildren && grandChildren.length > 0) {
+          // Recursively delete grandchildren first
+          await performDelete(child.id, grandChildren, false, true);
+        } else {
+          // No grandchildren, just delete the child
+          const { error: deleteChildError } = await supabase
+            .from("todos")
+            .delete()
+            .eq("id", child.id);
+
+          if (deleteChildError) {
+            console.error("Error deleting child:", deleteChildError);
+            throw deleteChildError;
+          }
+        }
+      }
+    }
+    // If children provided and clearReferences is true, clear their parent references
+    else if (children && children.length > 0 && clearReferences) {
+      // Clear parent references from children (make them root tasks)
+      const { error: clearError } = await supabase
+        .from("todos")
+        .update({
+          parent_todo_id: null,
+          parent_life_goal_id: null,
+        })
+        .in(
+          "id",
+          children.map((c) => c.id)
+        );
+
+      if (clearError) {
+        throw clearError;
+      }
+    }
+    // If children provided and we're reparenting (has parent)
+    else if (children && children.length > 0) {
+      // Get the task being deleted to find its parent BEFORE deleting
+      const { data: todo, error: todoError } = await supabase
+        .from("todos")
+        .select("parent_todo_id, parent_life_goal_id")
+        .eq("id", id)
+        .single();
+
+      if (todoError) {
+        throw todoError;
+      }
+
+      // Reparent all children to the deleted task's parent
+      const reparentData = {};
+
+      if (todo.parent_todo_id) {
+        reparentData.parent_todo_id = todo.parent_todo_id;
+        reparentData.parent_life_goal_id = null;
+      } else if (todo.parent_life_goal_id) {
+        reparentData.parent_life_goal_id = todo.parent_life_goal_id;
+        reparentData.parent_todo_id = null;
+      }
+
+      // Always update children - either to parent or clear references if no parent
+      if (reparentData.parent_todo_id || reparentData.parent_life_goal_id) {
+        // Update all children to point to the deleted task's parent
+        // Always explicitly set both fields to ensure proper reparenting
+        const updateData = {
+          parent_todo_id: reparentData.parent_todo_id ?? null,
+          parent_life_goal_id: reparentData.parent_life_goal_id ?? null,
+        };
+
+        const { error: reparentError } = await supabase
+          .from("todos")
+          .update(updateData)
+          .in(
+            "id",
+            children.map((c) => c.id)
+          );
+
+        if (reparentError) {
+          console.error("Error reparenting children:", reparentError);
+          throw reparentError;
+        }
+
+        console.log(
+          `Reparented ${children.length} children to parent:`,
+          updateData
+        );
+      } else {
+        // If no parent, clear parent references from children
+        const { error: clearError } = await supabase
+          .from("todos")
+          .update({
+            parent_todo_id: null,
+            parent_life_goal_id: null,
+          })
+          .in(
+            "id",
+            children.map((c) => c.id)
+          );
+
+        if (clearError) {
+          throw clearError;
+        }
+      }
+    }
+
+    // Now delete the task
     const { data, error } = await supabase
       .from("todos")
       .delete()

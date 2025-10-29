@@ -45,28 +45,16 @@ const DashboardScreen = () => {
   };
 
   const handleDelete = async (todo) => {
-    Alert.alert(
-      "Delete Todo",
-      `Are you sure you want to delete "${todo.task_name || todo.title}"?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const result = await deleteTodo(todo.id, true);
-            if (result.error && result.error !== "Deletion cancelled") {
-              Alert.alert("Error", result.error);
-            } else if (!result.error) {
-              refetch();
-            }
-          },
-        },
-      ]
-    );
+    // Let deleteTodo handle the Alert with options for children
+    const result = await deleteTodo(todo.id, true);
+    if (result.error) {
+      // Only show error if it's not a cancellation
+      if (result.error !== "Deletion cancelled") {
+        Alert.alert("Error", result.error);
+      }
+    } else {
+      refetch();
+    }
   };
 
   const handleToggleComplete = async (todo) => {
@@ -171,7 +159,7 @@ const DashboardScreen = () => {
     const stats = getSummaryStats();
     return (
       <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Dashboard</Text>
+        <Text style={styles.headerTitle}>Tasks</Text>
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.total}</Text>

@@ -17,6 +17,8 @@ import {
   Button,
   ActivityIndicator,
   Text,
+  ProgressBar,
+  Chip,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -87,29 +89,17 @@ const LifeGoalsScreen = () => {
     }
   };
 
-  const handleDelete = (goal) => {
-    Alert.alert(
-      "Delete Life Goal",
-      `Are you sure you want to delete "${goal.name}"?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const result = await deleteLifeGoal(goal.id);
-            if (result.error) {
-              Alert.alert("Error", result.error);
-            } else {
-              refetch();
-            }
-          },
-        },
-      ]
-    );
+  const handleDelete = async (goal) => {
+    // Let deleteLifeGoal handle the Alert with options for children
+    const result = await deleteLifeGoal(goal.id, true);
+    if (result.error) {
+      // Only show error if it's not a cancellation
+      if (result.error !== "Deletion cancelled") {
+        Alert.alert("Error", result.error);
+      }
+    } else {
+      refetch();
+    }
   };
 
   const onRefresh = async () => {
@@ -118,37 +108,80 @@ const LifeGoalsScreen = () => {
     setRefreshing(false);
   };
 
-  const renderGoalItem = ({ item }) => (
-    <Card style={styles.card} mode="outlined">
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <View style={styles.cardContent}>
-            <Title style={styles.cardTitle}>{item.name}</Title>
-            {item.description && (
-              <Paragraph style={styles.cardDescription}>
-                {item.description}
-              </Paragraph>
-            )}
+  const renderGoalItem = ({ item }) => {
+    const completionPercentage = item.completion_percentage || 0;
+    const totalTasks = item.total_tasks || 0;
+    const completedTasks = item.completed_tasks || 0;
+
+    // Color code based on completion percentage
+    const getProgressColor = () => {
+      if (completionPercentage === 0) return "#9E9E9E"; // Gray
+      if (completionPercentage < 34) return "#F44336"; // Red
+      if (completionPercentage < 67) return "#FF9800"; // Orange
+      if (completionPercentage < 100) return "#2196F3"; // Blue
+      return "#4CAF50"; // Green (100%)
+    };
+
+    return (
+      <Card style={styles.card} mode="outlined">
+        <Card.Content>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardContent}>
+              <Title style={styles.cardTitle}>{item.name}</Title>
+              {item.description && (
+                <Paragraph style={styles.cardDescription}>
+                  {item.description}
+                </Paragraph>
+              )}
+
+              {/* Completion Stats */}
+              {totalTasks > 0 ? (
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressHeader}>
+                    <Text style={styles.progressText}>
+                      {completedTasks} of {totalTasks} tasks completed
+                    </Text>
+                    <Chip
+                      mode="flat"
+                      textStyle={styles.percentageChip}
+                      style={[
+                        styles.percentageChipContainer,
+                        { backgroundColor: getProgressColor() + "20" },
+                      ]}
+                    >
+                      {completionPercentage.toFixed(0)}%
+                    </Chip>
+                  </View>
+                  <ProgressBar
+                    progress={completionPercentage / 100}
+                    color={getProgressColor()}
+                    style={styles.progressBar}
+                  />
+                </View>
+              ) : (
+                <Text style={styles.noTasksText}>No tasks yet</Text>
+              )}
+            </View>
+            <View style={styles.cardActions}>
+              <IconButton
+                icon="pencil"
+                size={20}
+                onPress={() => handleOpenModal(item)}
+                disabled={formLoading}
+              />
+              <IconButton
+                icon="delete"
+                size={20}
+                onPress={() => handleDelete(item)}
+                disabled={formLoading}
+                iconColor="#B00020"
+              />
+            </View>
           </View>
-          <View style={styles.cardActions}>
-            <IconButton
-              icon="pencil"
-              size={20}
-              onPress={() => handleOpenModal(item)}
-              disabled={formLoading}
-            />
-            <IconButton
-              icon="delete"
-              size={20}
-              onPress={() => handleDelete(item)}
-              disabled={formLoading}
-              iconColor="#B00020"
-            />
-          </View>
-        </View>
-      </Card.Content>
-    </Card>
-  );
+        </Card.Content>
+      </Card>
+    );
+  };
 
   if (loading && lifeGoals.length === 0) {
     return (
@@ -326,6 +359,37 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  progressContainer: {
+    marginTop: 12,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  progressText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  percentageChip: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  percentageChipContainer: {
+    height: 24,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  noTasksText: {
+    fontSize: 12,
+    color: "#999",
+    fontStyle: "italic",
+    marginTop: 8,
   },
 });
 

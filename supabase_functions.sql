@@ -153,3 +153,144 @@ $$;
 
 GRANT EXECUTE ON FUNCTION get_hierarchy_stats() TO authenticated;
 
+-- ============================================================================
+-- Function: get_possible_parents
+-- Returns valid parent options (todos and life_goals) for a given task type
+-- Based on hierarchy rules:
+--   daily → weekly todo, life goal
+--   weekly → monthly todo, life goal
+--   monthly → yearly todo, life goal
+--   yearly → life goal only
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS get_possible_parents(text, uuid);
+
+CREATE OR REPLACE FUNCTION get_possible_parents(
+  task_type_param text,
+  current_todo_id uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  id uuid,
+  name text,
+  title text,
+  task_name text,
+  task_type text,
+  type text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH valid_todo_types AS (
+    SELECT unnest(
+      CASE task_type_param
+        WHEN 'daily' THEN ARRAY['weekly']::text[]
+        WHEN 'weekly' THEN ARRAY['monthly']::text[]
+        WHEN 'monthly' THEN ARRAY['yearly']::text[]
+        WHEN 'yearly' THEN ARRAY[]::text[]
+        ELSE ARRAY[]::text[]
+      END
+    ) as allowed_type
+  ),
+  valid_todos AS (
+    SELECT 
+      t.id,
+      NULL::text as name,
+      NULL::text as title,
+      COALESCE(t.task_name, 'Untitled Task')::text as task_name,
+      t.task_type,
+      'todo'::text as type
+    FROM todos t
+    WHERE t.user_id = auth.uid()
+      AND EXISTS (SELECT 1 FROM valid_todo_types WHERE allowed_type = t.task_type)
+      AND (current_todo_id IS NULL OR t.id != current_todo_id)
+      AND t.state != 'completed' -- Usually don't want to add children to completed tasks
+      AND t.task_name IS NOT NULL -- Ensure task_name exists
+      AND t.task_type IS NOT NULL -- Ensure task_type exists
+  ),
+  valid_life_goals AS (
+    SELECT 
+      lg.id,
+      COALESCE(lg.name, 'Unnamed Goal')::text as name,
+      NULL::text as title,
+      NULL::text as task_name,
+      NULL::text as task_type,
+      'life_goal'::text as type
+    FROM life_goals lg
+    WHERE lg.user_id = auth.uid()
+      AND lg.name IS NOT NULL -- Ensure name exists
+  )
+  -- Return todos (if allowed for this task type)
+  SELECT * FROM valid_todos
+  UNION ALL
+  -- Return life goals (always allowed)
+  SELECT * FROM valid_life_goals
+  ORDER BY type, task_type, name, task_name;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_possible_parents(text, uuid) TO authenticated;
+
+-- ============================================================================
+-- Function: get_life_goal_stats
+-- Returns completion statistics for life goals based on their child tasks
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS get_life_goal_stats();
+
+CREATE OR REPLACE FUNCTION get_life_goal_stats()
+RETURNS TABLE (
+  id uuid,
+  name text,
+  description text,
+  user_id uuid,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  total_tasks bigint,
+  completed_tasks bigint,
+  completion_percentage numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH task_counts AS (
+    SELECT 
+      lg.id,
+      lg.name,
+      lg.description,
+      lg.user_id,
+      lg.created_at,
+      lg.updated_at,
+      COUNT(t.id)::bigint as total_tasks,
+      COUNT(t.id) FILTER (WHERE t.state = 'completed')::bigint as completed_tasks
+    FROM life_goals lg
+    LEFT JOIN todos t ON t.parent_life_goal_id = lg.id
+    WHERE lg.user_id = auth.uid()
+    GROUP BY lg.id, lg.name, lg.description, lg.user_id, lg.created_at, lg.updated_at
+  )
+  SELECT 
+    tc.id,
+    tc.name,
+    tc.description,
+    tc.user_id,
+    tc.created_at,
+    tc.updated_at,
+    COALESCE(tc.total_tasks, 0)::bigint as total_tasks,
+    COALESCE(tc.completed_tasks, 0)::bigint as completed_tasks,
+    CASE 
+      WHEN COALESCE(tc.total_tasks, 0) = 0 THEN 0::numeric
+      ELSE ROUND(
+        (COALESCE(tc.completed_tasks, 0)::numeric / COALESCE(tc.total_tasks, 1)::numeric) * 100,
+        2
+      )
+    END as completion_percentage
+  FROM task_counts tc
+  ORDER BY tc.created_at DESC;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_life_goal_stats() TO authenticated;
+
