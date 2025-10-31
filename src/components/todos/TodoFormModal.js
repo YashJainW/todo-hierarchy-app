@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { ScrollView, View, StyleSheet, Platform } from "react-native";
+import {
+  ScrollView,
+  View,
+  StyleSheet,
+  Platform,
+  Text as RNText,
+} from "react-native";
 import {
   Portal,
   Dialog,
@@ -12,6 +18,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import RNPickerSelect from "react-native-picker-select";
 import { format } from "date-fns";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   getPossibleParents,
   createTodo,
@@ -532,13 +539,19 @@ const TodoFormModal = ({
     <>
       <Portal>
         <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
-          <Dialog.Title>
-            {existingTodo ? "Edit Task" : "Create Task"}
+          <Dialog.Title style={styles.dialogTitle}>
+            <RNText style={styles.dialogTitleText}>
+              {existingTodo ? "Edit Task" : "Create Task"}
+            </RNText>
           </Dialog.Title>
-          <Dialog.ScrollArea style={styles.scrollArea}>
+          <Dialog.Content style={styles.dialogContent}>
             <ScrollView
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
+              style={styles.scrollView}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              bounces={false}
             >
               {/* Task Name Input */}
               <TextInput
@@ -577,10 +590,30 @@ const TodoFormModal = ({
                   if (errors) setErrors(null);
                 }}
                 buttons={[
-                  { value: "daily", label: "Daily" },
-                  { value: "weekly", label: "Weekly" },
-                  { value: "monthly", label: "Monthly" },
-                  { value: "yearly", label: "Yearly" },
+                  {
+                    value: "daily",
+                    label: "Daily",
+                    style: styles.segmentButton,
+                    labelStyle: styles.segmentLabel,
+                  },
+                  {
+                    value: "weekly",
+                    label: "Weekly",
+                    style: styles.segmentButton,
+                    labelStyle: styles.segmentLabel,
+                  },
+                  {
+                    value: "monthly",
+                    label: "Monthly",
+                    style: styles.segmentButton,
+                    labelStyle: styles.segmentLabel,
+                  },
+                  {
+                    value: "yearly",
+                    label: "Yearly",
+                    style: styles.segmentButton,
+                    labelStyle: styles.segmentLabel,
+                  },
                 ]}
                 style={styles.segmentedButtons}
               />
@@ -693,9 +726,9 @@ const TodoFormModal = ({
               {/* Validation Errors */}
               {errors && <Text style={styles.error}>{errors}</Text>}
             </ScrollView>
-          </Dialog.ScrollArea>
+          </Dialog.Content>
 
-          <Dialog.Actions>
+          <Dialog.Actions style={styles.dialogActions}>
             <Button onPress={onDismiss} disabled={loading}>
               Cancel
             </Button>
@@ -735,14 +768,42 @@ const TodoFormModal = ({
 
 const styles = StyleSheet.create({
   dialog: {
-    maxHeight: "90%",
+    maxHeight: "85%",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#fff",
   },
-  scrollArea: {
-    maxHeight: 500,
+  dialogTitle: {
+    backgroundColor: "#5A2DFF",
+    margin: 0,
+    padding: 16,
+    paddingVertical: 18,
+  },
+  dialogTitleText: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontFamily: "Quicksand-Bold",
+    textAlign: "center",
+  },
+  dialogContent: {
+    maxHeight: 450,
     paddingHorizontal: 0,
+    backgroundColor: "#F8F5FF",
+  },
+  scrollView: {
+    maxHeight: 450,
+  },
+  dialogActions: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
   input: {
     marginBottom: 16,
@@ -755,11 +816,21 @@ const styles = StyleSheet.create({
   },
   segmentedButtons: {
     marginBottom: 16,
+    borderRadius: 28,
+    backgroundColor: "#EDE7F6",
+    borderWidth: 1,
+    borderColor: "#B39DDB",
+  },
+  segmentButton: {
+    flex: 1,
+    minWidth: 0,
+  },
+  segmentLabel: {
+    fontSize: 14,
   },
   chipContainer: {
     flexDirection: "row",
     marginBottom: 16,
-    gap: 8,
   },
   chip: {
     marginRight: 8,
@@ -768,7 +839,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
-    gap: 8,
   },
   dateButton: {
     flex: 1,
@@ -778,16 +848,16 @@ const styles = StyleSheet.create({
   },
   pickerInput: {
     fontSize: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "#999",
-    borderRadius: 4,
+    borderColor: "#B39DDB",
+    borderRadius: 10,
     backgroundColor: "#fff",
     marginBottom: 16,
   },
   pickerPlaceholder: {
-    color: "#999",
+    color: "#7E57C2",
   },
   loadingText: {
     fontSize: 14,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, ScrollView, StyleSheet, Alert } from "react-native";
+import { View, ScrollView, StyleSheet, Alert, Text } from "react-native";
 import {
   Card,
   Title,
@@ -7,13 +7,13 @@ import {
   Button,
   Divider,
   List,
-  Text,
   ActivityIndicator,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import supabase from "../../lib/supabase";
 import { format } from "date-fns";
+import { LinearGradient } from "expo-linear-gradient";
 
 const ProfileScreen = () => {
   const { user, updateProfile, updatePassword, signOut } = useAuth();
@@ -21,6 +21,8 @@ const ProfileScreen = () => {
   // Profile state
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
+  const [initialUsername, setInitialUsername] = useState("");
+  const [initialFullName, setInitialFullName] = useState("");
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profileError, setProfileError] = useState(null);
@@ -62,26 +64,42 @@ const ProfileScreen = () => {
           .single();
 
         if (!profileError && profileData) {
-          setUsername(profileData.username || "");
-          setFullName(profileData.full_name || "");
+          const fetchedUsername = profileData.username || "";
+          const fetchedFullName = profileData.full_name || "";
+          setUsername(fetchedUsername);
+          setFullName(fetchedFullName);
+          setInitialUsername(fetchedUsername);
+          setInitialFullName(fetchedFullName);
         } else {
           // Fallback to user metadata
           const metadata = user.user_metadata || {};
-          setUsername(metadata.username || "");
-          setFullName(metadata.full_name || "");
+          const fetchedUsername = metadata.username || "";
+          const fetchedFullName = metadata.full_name || "";
+          setUsername(fetchedUsername);
+          setFullName(fetchedFullName);
+          setInitialUsername(fetchedUsername);
+          setInitialFullName(fetchedFullName);
         }
       } else {
         // Use user metadata
         const metadata = user?.user_metadata || {};
-        setUsername(metadata.username || "");
-        setFullName(metadata.full_name || "");
+        const fetchedUsername = metadata.username || "";
+        const fetchedFullName = metadata.full_name || "";
+        setUsername(fetchedUsername);
+        setFullName(fetchedFullName);
+        setInitialUsername(fetchedUsername);
+        setInitialFullName(fetchedFullName);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
       // Fallback to user metadata
       const metadata = user?.user_metadata || {};
-      setUsername(metadata.username || "");
-      setFullName(metadata.full_name || "");
+      const fetchedUsername = metadata.username || "";
+      const fetchedFullName = metadata.full_name || "";
+      setUsername(fetchedUsername);
+      setFullName(fetchedFullName);
+      setInitialUsername(fetchedUsername);
+      setInitialFullName(fetchedFullName);
     } finally {
       setProfileLoading(false);
     }
@@ -157,6 +175,9 @@ const ProfileScreen = () => {
       }
 
       setProfileSuccess(true);
+      // Update initial values after successful save
+      setInitialUsername(username.trim());
+      setInitialFullName(fullName.trim() || "");
       setTimeout(() => setProfileSuccess(false), 3000);
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -166,9 +187,32 @@ const ProfileScreen = () => {
     }
   };
 
+  // Check if profile form has changes
+  const hasProfileChanges = () => {
+    return (
+      username.trim() !== initialUsername ||
+      (fullName.trim() || "") !== initialFullName
+    );
+  };
+
+  // Check if password form has changes
+  const hasPasswordChanges = () => {
+    const hasAll =
+      currentPassword.trim().length > 0 &&
+      newPassword.trim().length >= 6 &&
+      confirmPassword.trim().length >= 6 &&
+      newPassword.trim() === confirmPassword.trim();
+    return hasAll;
+  };
+
   const handlePasswordChange = async () => {
     setPasswordError(null);
     setPasswordSuccess(false);
+
+    if (!currentPassword.trim()) {
+      setPasswordError("Current password is required");
+      return;
+    }
 
     // Validation
     if (newPassword.length < 6) {
@@ -184,6 +228,18 @@ const ProfileScreen = () => {
     setChangingPassword(true);
 
     try {
+      // Verify current password by signing in
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user?.email || "",
+        password: currentPassword,
+      });
+
+      if (reauthError) {
+        setPasswordError("Current password is incorrect");
+        setChangingPassword(false);
+        return;
+      }
+
       const result = await updatePassword(newPassword);
 
       if (result.error) {
@@ -191,7 +247,7 @@ const ProfileScreen = () => {
       }
 
       setPasswordSuccess(true);
-      // Clear form
+      // Clear form after successful password change
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -242,9 +298,15 @@ const ProfileScreen = () => {
       >
         {/* Profile Information Section */}
         <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
-            <Title style={styles.sectionTitle}>Profile Information</Title>
-
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.gradientHeader}
+          >
+            <Text style={styles.gradientTitle}>Profile Information</Text>
+          </LinearGradient>
+          <Card.Content style={styles.cardContent}>
             {/* Email (read-only) */}
             <TextInput
               label="Email"
@@ -266,6 +328,9 @@ const ProfileScreen = () => {
               mode="outlined"
               style={styles.input}
               disabled={saving}
+              textColor="#000000"
+              activeOutlineColor="#6200ee"
+              outlineColor="#CCCCCC"
             />
 
             {/* Full Name */}
@@ -279,6 +344,9 @@ const ProfileScreen = () => {
               mode="outlined"
               style={styles.input}
               disabled={saving}
+              textColor="#000000"
+              activeOutlineColor="#6200ee"
+              outlineColor="#CCCCCC"
             />
 
             {/* Error/Success Messages */}
@@ -296,7 +364,7 @@ const ProfileScreen = () => {
               mode="contained"
               onPress={handleProfileUpdate}
               loading={saving}
-              disabled={saving}
+              disabled={saving || !hasProfileChanges()}
               style={styles.updateButton}
             >
               Update Profile
@@ -308,8 +376,31 @@ const ProfileScreen = () => {
 
         {/* Password Change Section */}
         <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
-            <Title style={styles.sectionTitle}>Change Password</Title>
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.gradientHeader}
+          >
+            <Text style={styles.gradientTitle}>Change Password</Text>
+          </LinearGradient>
+          <Card.Content style={styles.cardContent}>
+            {/* Current Password */}
+            <TextInput
+              label="Current Password"
+              value={currentPassword}
+              onChangeText={(text) => {
+                setCurrentPassword(text);
+                setPasswordError(null);
+              }}
+              mode="outlined"
+              secureTextEntry
+              style={styles.input}
+              disabled={changingPassword}
+              textColor="#000000"
+              activeOutlineColor="#6200ee"
+              outlineColor="#CCCCCC"
+            />
 
             {/* New Password */}
             <TextInput
@@ -323,6 +414,9 @@ const ProfileScreen = () => {
               secureTextEntry
               style={styles.input}
               disabled={changingPassword}
+              textColor="#000000"
+              activeOutlineColor="#6200ee"
+              outlineColor="#CCCCCC"
             />
 
             {/* Confirm Password */}
@@ -337,6 +431,9 @@ const ProfileScreen = () => {
               secureTextEntry
               style={styles.input}
               disabled={changingPassword}
+              textColor="#000000"
+              activeOutlineColor="#6200ee"
+              outlineColor="#CCCCCC"
             />
 
             {/* Error/Success Messages */}
@@ -354,7 +451,7 @@ const ProfileScreen = () => {
               mode="contained"
               onPress={handlePasswordChange}
               loading={changingPassword}
-              disabled={changingPassword}
+              disabled={changingPassword || !hasPasswordChanges()}
               style={styles.updateButton}
             >
               Change Password
@@ -366,14 +463,22 @@ const ProfileScreen = () => {
 
         {/* Statistics Section */}
         <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
-            <Title style={styles.sectionTitle}>Statistics</Title>
-
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.gradientHeader}
+          >
+            <Text style={styles.gradientTitle}>Statistics</Text>
+          </LinearGradient>
+          <Card.Content style={styles.cardContent}>
             <List.Item
               title="Total Tasks"
               description={`${stats.totalTasks} tasks created`}
               left={(props) => <List.Icon {...props} icon="check-circle" />}
               style={styles.statItem}
+              titleStyle={styles.listItemTitle}
+              descriptionStyle={styles.listItemDescription}
             />
 
             <List.Item
@@ -381,6 +486,8 @@ const ProfileScreen = () => {
               description={`${stats.completedTasks} tasks finished`}
               left={(props) => <List.Icon {...props} icon="check-all" />}
               style={styles.statItem}
+              titleStyle={styles.listItemTitle}
+              descriptionStyle={styles.listItemDescription}
             />
 
             {stats.memberSince && (
@@ -389,6 +496,8 @@ const ProfileScreen = () => {
                 description={format(stats.memberSince, "MMMM dd, yyyy")}
                 left={(props) => <List.Icon {...props} icon="calendar" />}
                 style={styles.statItem}
+                titleStyle={styles.listItemTitle}
+                descriptionStyle={styles.listItemDescription}
               />
             )}
           </Card.Content>
@@ -424,6 +533,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   scrollContent: {
@@ -432,10 +542,21 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 16,
     backgroundColor: "#fff",
+    overflow: "hidden",
+    borderRadius: 12,
+  },
+  gradientHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  gradientTitle: {
+    fontSize: 20,
+    fontFamily: "Quicksand-Bold",
+    color: "#ffffff",
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontFamily: "Quicksand-Bold",
     marginBottom: 16,
   },
   input: {
@@ -447,12 +568,14 @@ const styles = StyleSheet.create({
   errorText: {
     color: "#B00020",
     fontSize: 14,
+    fontFamily: "Quicksand-Regular",
     marginBottom: 8,
     marginTop: 4,
   },
   successText: {
     color: "#4caf50",
     fontSize: 14,
+    fontFamily: "Quicksand-SemiBold",
     marginBottom: 8,
     marginTop: 4,
     fontWeight: "600",
@@ -463,9 +586,18 @@ const styles = StyleSheet.create({
   statItem: {
     paddingVertical: 8,
   },
+  listItemTitle: {
+    fontFamily: "Quicksand-SemiBold",
+  },
+  listItemDescription: {
+    fontFamily: "Quicksand-Regular",
+  },
   signOutButton: {
     marginTop: 8,
     marginBottom: 32,
+  },
+  cardContent: {
+    paddingTop: 16,
   },
 });
 

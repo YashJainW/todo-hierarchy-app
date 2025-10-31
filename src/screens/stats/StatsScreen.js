@@ -1,5 +1,12 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { FlatList, View, StyleSheet, RefreshControl } from "react-native";
+import {
+  FlatList,
+  View,
+  StyleSheet,
+  RefreshControl,
+  Text as RNText,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   Card,
   Title,
@@ -110,16 +117,31 @@ const StatsScreen = () => {
 
     return (
       <Card style={styles.summaryCard} mode="elevated" elevation={3}>
-        <Card.Content>
-          <Title style={styles.summaryTitle}>Overall Progress</Title>
+        <LinearGradient
+          colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.summaryGradient}
+        >
+          <RNText style={styles.summaryTitle}>Overall Progress</RNText>
+        </LinearGradient>
+        <Card.Content style={styles.summaryContent}>
           <View style={styles.summaryStats}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>{summary.completed}</Text>
+              <Text
+                style={[styles.summaryNumber, styles.summaryNumberGradient]}
+              >
+                {summary.completed}
+              </Text>
               <Text style={styles.summaryLabel}>Completed</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>{summary.total}</Text>
+              <Text
+                style={[styles.summaryNumber, styles.summaryNumberGradient]}
+              >
+                {summary.total}
+              </Text>
               <Text style={styles.summaryLabel}>Total Tasks</Text>
             </View>
             <View style={styles.summaryDivider} />
@@ -152,39 +174,49 @@ const StatsScreen = () => {
     const total = item.total_descendants || 0;
     const progressColor = getProgressColor(percentage);
 
+    // Get gradient colors based on task type
+    const getCardGradient = () => {
+      if (item.task_type === "yearly") return ["#9C27B0", "#BA68C8"];
+      if (item.task_type === "monthly") return ["#2196F3", "#64B5F6"];
+      if (item.task_type === "weekly") return ["#4CAF50", "#81C784"];
+      return ["#FF9800", "#FFB74D"];
+    };
+
     return (
       <Card style={styles.card} mode="elevated" elevation={2}>
-        <Card.Title
-          title={item.root_task_name || item.title || "Untitled Task"}
-          subtitle={
-            item.created_at
-              ? `Created: ${format(new Date(item.created_at), "MMM dd, yyyy")}`
-              : null
-          }
-          titleNumberOfLines={2}
-        />
+        <LinearGradient
+          colors={getCardGradient()}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.cardHeaderGradient}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderContent}>
+              <RNText style={styles.cardHeaderTitle} numberOfLines={2}>
+                {item.root_task_name || item.title || "Untitled Task"}
+              </RNText>
+              {item.created_at && (
+                <RNText style={styles.cardHeaderSubtitle}>
+                  Created: {format(new Date(item.created_at), "MMM dd, yyyy")}
+                </RNText>
+              )}
+            </View>
+            {item.task_type && (
+              <Chip
+                style={[
+                  styles.typeChipHeader,
+                  {
+                    backgroundColor: "rgba(255, 255, 255, 0.25)",
+                  },
+                ]}
+                textStyle={styles.chipTextHeader}
+              >
+                {formatTaskType(item.task_type)}
+              </Chip>
+            )}
+          </View>
+        </LinearGradient>
         <Card.Content>
-          {item.task_type && (
-            <Chip
-              style={[
-                styles.typeChip,
-                {
-                  backgroundColor:
-                    item.task_type === "yearly"
-                      ? "#9c27b0"
-                      : item.task_type === "monthly"
-                      ? "#2196f3"
-                      : item.task_type === "weekly"
-                      ? "#4caf50"
-                      : "#ff9800",
-                },
-              ]}
-              textStyle={styles.chipText}
-            >
-              {formatTaskType(item.task_type)}
-            </Chip>
-          )}
-
           <View style={styles.progressContainer}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressText}>
@@ -200,6 +232,14 @@ const StatsScreen = () => {
               style={styles.progressBar}
             />
           </View>
+          {item.due_date && (
+            <View style={styles.dueDateContainer}>
+              <RNText style={styles.dueDateLabel}>Due Date:</RNText>
+              <RNText style={styles.dueDateText}>
+                {format(new Date(item.due_date), "MMM dd, yyyy")}
+              </RNText>
+            </View>
+          )}
         </Card.Content>
       </Card>
     );
@@ -300,6 +340,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   errorContainer: {
@@ -309,10 +350,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#ef5350",
   },
   errorText: {
+    fontFamily: "Quicksand-Regular",
     color: "#B00020",
     marginBottom: 4,
   },
   retryText: {
+    fontFamily: "Quicksand-Regular",
     color: "#6200ee",
     textDecorationLine: "underline",
     fontSize: 14,
@@ -330,22 +373,35 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     color: "#666",
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
+    fontFamily: "Quicksand-Regular",
     color: "#999",
     textAlign: "center",
   },
   summaryCard: {
     marginBottom: 16,
     backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+  summaryGradient: {
+    padding: 16,
+    paddingBottom: 20,
+  },
+  summaryContent: {
+    paddingTop: 16,
   },
   summaryTitle: {
     fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 16,
+    fontFamily: "Quicksand-Bold",
+    color: "#ffffff",
+  },
+  summaryNumberGradient: {
+    color: "#6200ee",
   },
   summaryStats: {
     flexDirection: "row",
@@ -360,11 +416,13 @@ const styles = StyleSheet.create({
   summaryNumber: {
     fontSize: 28,
     fontWeight: "bold",
+    fontFamily: "Quicksand-Bold",
     color: "#6200ee",
     marginBottom: 4,
   },
   summaryLabel: {
     fontSize: 12,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   summaryDivider: {
@@ -383,6 +441,7 @@ const styles = StyleSheet.create({
   sortLabel: {
     fontSize: 14,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     marginBottom: 8,
     color: "#000",
     paddingHorizontal: 4,
@@ -393,12 +452,48 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 12,
     backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+  cardHeaderGradient: {
+    padding: 16,
+    paddingBottom: 12,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  cardHeaderContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  cardHeaderTitle: {
+    fontSize: 18,
+    fontFamily: "Quicksand-SemiBold",
+    color: "#ffffff",
+    marginBottom: 4,
+  },
+  cardHeaderSubtitle: {
+    fontSize: 12,
+    fontFamily: "Quicksand-Regular",
+    color: "#ffffff",
+    opacity: 0.9,
+  },
+  typeChipHeader: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  chipTextHeader: {
+    fontFamily: "Quicksand-SemiBold",
+    color: "#ffffff",
+    fontSize: 11,
   },
   typeChip: {
     alignSelf: "flex-start",
     marginBottom: 12,
   },
   chipText: {
+    fontFamily: "Quicksand-SemiBold",
     color: "#fff",
     fontWeight: "600",
     fontSize: 12,
@@ -413,17 +508,38 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 14,
+    fontFamily: "Quicksand-Medium",
     color: "#666",
     fontWeight: "500",
   },
   progressPercent: {
     fontSize: 14,
+    fontFamily: "Quicksand-Bold",
     fontWeight: "bold",
   },
   progressBar: {
     height: 8,
     borderRadius: 4,
     backgroundColor: "#e0e0e0",
+  },
+  dueDateContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  dueDateLabel: {
+    fontSize: 12,
+    fontFamily: "Quicksand-SemiBold",
+    color: "#666",
+    marginRight: 8,
+  },
+  dueDateText: {
+    fontSize: 12,
+    fontFamily: "Quicksand-Regular",
+    color: "#000",
   },
 });
 

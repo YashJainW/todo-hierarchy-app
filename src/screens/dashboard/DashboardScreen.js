@@ -62,57 +62,13 @@ const DashboardScreen = () => {
 
   const handleToggleComplete = async (todo) => {
     const isCompleted = todo.state === "completed";
+    const nextState = isCompleted ? "not_started" : "completed";
 
-    if (isCompleted) {
-      // Show confirmation before unmarking as complete
-      Alert.alert(
-        "Unmark as Complete",
-        `Mark "${todo.task_name || todo.title}" as not started?`,
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-          {
-            text: "Confirm",
-            onPress: async () => {
-              const result = await updateTodo(todo.id, {
-                state: "not_started",
-              });
-              if (result.error) {
-                Alert.alert("Error", result.error);
-              } else {
-                refetch();
-              }
-            },
-          },
-        ]
-      );
+    const result = await updateTodo(todo.id, { state: nextState });
+    if (result?.error) {
+      Alert.alert("Error", result.error);
     } else {
-      // Show confirmation before marking as complete
-      Alert.alert(
-        "Mark as Complete",
-        `Mark "${todo.task_name || todo.title}" as completed?`,
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-          {
-            text: "Confirm",
-            onPress: async () => {
-              const result = await updateTodo(todo.id, {
-                state: "completed",
-              });
-              if (result.error) {
-                Alert.alert("Error", result.error);
-              } else {
-                refetch();
-              }
-            },
-          },
-        ]
-      );
+      refetch();
     }
   };
 
@@ -224,26 +180,33 @@ const DashboardScreen = () => {
   const ListHeaderComponent = () => {
     const stats = getSummaryStats();
     return (
-      <View style={styles.headerContainer}>
+      <LinearGradient
+        colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.headerGradient}
+      >
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.total}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
+              {stats.total}
+            </Text>
+            <Text style={styles.statLabelLight}>Total</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statCompleted]}>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
               {stats.completed}
             </Text>
-            <Text style={styles.statLabel}>Completed</Text>
+            <Text style={styles.statLabelLight}>Completed</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statInProgress]}>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
               {stats.inProgress}
             </Text>
-            <Text style={styles.statLabel}>In Progress</Text>
+            <Text style={styles.statLabelLight}>In Progress</Text>
           </View>
         </View>
-      </View>
+      </LinearGradient>
     );
   };
 
@@ -353,11 +316,12 @@ const DashboardScreen = () => {
     );
   };
 
-  if (loading && tasks.length === 0) {
+  // Show loader on initial load (when loading is true)
+  if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color="#6200ee" />
           <Text style={styles.loadingText}>Loading tasks...</Text>
         </View>
       </SafeAreaView>
@@ -471,6 +435,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   errorContainer: {
@@ -480,6 +445,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#ef5350",
   },
   errorText: {
+    fontFamily: "Quicksand-Regular",
     color: "#B00020",
   },
   headerContainer: {
@@ -487,6 +453,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
+  },
+  headerGradient: {
+    padding: 16,
+    borderBottomWidth: 0,
+    borderBottomColor: "transparent",
   },
   headerTitle: {
     fontSize: 28,
@@ -505,7 +476,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 24,
     fontWeight: "bold",
+    fontFamily: "Quicksand-Bold",
     color: "#6200ee",
+  },
+  statNumberLight: {
+    color: "#ffffff",
   },
   statCompleted: {
     color: "#4caf50",
@@ -516,6 +491,12 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: "#666",
+    marginTop: 4,
+  },
+  statLabelLight: {
+    fontSize: 12,
+    fontFamily: "Quicksand-Regular",
+    color: "#EDE7F6",
     marginTop: 4,
   },
   listContainer: {
@@ -530,11 +511,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     color: "#666",
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
+    fontFamily: "Quicksand-Regular",
     color: "#999",
     textAlign: "center",
   },
@@ -579,7 +562,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 16,
-    bottom: 16,
+    bottom: 80, // Positioned above tab bar (60px) with extra padding
     backgroundColor: "transparent",
     borderRadius: 28,
     paddingHorizontal: 18,
@@ -611,6 +594,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 22,
     fontWeight: "800",
+    fontFamily: "Quicksand-Bold",
     marginRight: 10,
     marginTop: -1,
   },
@@ -618,6 +602,7 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
+    fontFamily: "Quicksand-Bold",
     letterSpacing: 0.3,
   },
 });

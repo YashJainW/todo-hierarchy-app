@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   Text,
   Checkbox,
@@ -208,11 +209,11 @@ const TaskTreeNode = ({
                     )}
                   </View>
                 ) : (
-                  <View
-                    style={[
-                      styles.typeIndicator,
-                      { backgroundColor: taskTypeColor },
-                    ]}
+                  <LinearGradient
+                    colors={[taskTypeColor, taskTypeColor + "CC"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.typeIndicator}
                   />
                 )}
                 {/* Task name with proper width */}
@@ -446,6 +447,7 @@ const styles = StyleSheet.create({
   taskNameText: {
     fontSize: 15,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     color: "#000",
     flex: 1,
     marginRight: 6,
@@ -480,6 +482,7 @@ const styles = StyleSheet.create({
   typeBadgeText: {
     fontSize: 9,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     textTransform: "capitalize",
   },
   priorityBadge: {
@@ -498,16 +501,19 @@ const styles = StyleSheet.create({
   },
   metadataText: {
     fontSize: 11,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
     marginRight: 8,
   },
   progressText: {
     fontSize: 11,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
     marginRight: 8,
   },
   descriptionText: {
     fontSize: 12,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
     lineHeight: 16,
     marginTop: 4,
@@ -533,6 +539,7 @@ const styles = StyleSheet.create({
   progressPercent: {
     fontSize: 11,
     fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     color: "#6200ee",
     minWidth: 35,
   },

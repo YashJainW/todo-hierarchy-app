@@ -84,6 +84,7 @@ RETURNS TABLE (
   root_task_name text,
   task_type text,
   created_at timestamptz,
+  due_date date,
   total_descendants bigint,
   completed_descendants bigint,
   completion_percentage numeric
@@ -98,7 +99,8 @@ BEGIN
       rt.id,
       rt.task_name,
       rt.task_type,
-      rt.created_at
+      rt.created_at,
+      rt.due_date
     FROM todos rt
     WHERE rt.user_id = auth.uid()
       AND rt.parent_todo_id IS NULL
@@ -142,6 +144,7 @@ BEGIN
     rt.task_name as root_task_name,
     rt.task_type,
     rt.created_at,
+    rt.due_date,
     COALESCE(td.total_descendants, 0)::bigint as total_descendants,
     COALESCE(td.completed_descendants, 0)::bigint as completed_descendants,
     CASE 

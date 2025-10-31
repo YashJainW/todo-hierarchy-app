@@ -5,18 +5,17 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
+  Text,
+  TouchableOpacity,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-  FAB,
   Card,
-  Title,
-  Paragraph,
   IconButton,
   Dialog,
   TextInput,
   Button,
   ActivityIndicator,
-  Text,
   ProgressBar,
   Chip,
 } from "react-native-paper";
@@ -117,58 +116,73 @@ const LifeGoalsScreen = () => {
     setRefreshing(false);
   };
 
-  const renderGoalItem = ({ item }) => {
+  const renderProgressSection = (item) => {
     const completionPercentage = item.completion_percentage || 0;
     const totalTasks = item.total_tasks || 0;
     const completedTasks = item.completed_tasks || 0;
 
-    // Color code based on completion percentage
     const getProgressColor = () => {
-      if (completionPercentage === 0) return "#9E9E9E"; // Gray
-      if (completionPercentage < 34) return "#F44336"; // Red
-      if (completionPercentage < 67) return "#FF9800"; // Orange
-      if (completionPercentage < 100) return "#2196F3"; // Blue
-      return "#4CAF50"; // Green (100%)
+      if (completionPercentage === 0) return "#9E9E9E";
+      if (completionPercentage < 34) return "#F44336";
+      if (completionPercentage < 67) return "#FF9800";
+      if (completionPercentage < 100) return "#2196F3";
+      return "#4CAF50";
+    };
+
+    if (totalTasks > 0) {
+      return (
+        <View style={styles.progressContainer}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressText}>
+              {completedTasks} of {totalTasks} tasks completed
+            </Text>
+            <Chip
+              mode="flat"
+              textStyle={styles.percentageChip}
+              style={[
+                styles.percentageChipContainer,
+                { backgroundColor: getProgressColor() + "20" },
+              ]}
+            >
+              {completionPercentage.toFixed(0)}%
+            </Chip>
+          </View>
+          <ProgressBar
+            progress={completionPercentage / 100}
+            color={getProgressColor()}
+            style={styles.progressBar}
+          />
+        </View>
+      );
+    }
+    return <Text style={styles.noTasksText}>No tasks yet</Text>;
+  };
+
+  const renderGoalItemFull = ({ item }) => {
+    const completionPercentage = item.completion_percentage || 0;
+
+    // Get gradient colors based on completion percentage
+    const getCardGradient = () => {
+      if (completionPercentage === 0) return ["#9E9E9E", "#BDBDBD"];
+      if (completionPercentage < 34) return ["#F44336", "#EF5350"];
+      if (completionPercentage < 67) return ["#FF9800", "#FFB74D"];
+      if (completionPercentage < 100) return ["#2196F3", "#64B5F6"];
+      return ["#4CAF50", "#81C784"];
     };
 
     return (
-      <Card style={styles.card} mode="outlined">
-        <Card.Content>
+      <Card style={styles.card} mode="elevated" elevation={3}>
+        <LinearGradient
+          colors={getCardGradient()}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.cardGradient}
+        >
           <View style={styles.cardHeader}>
             <View style={styles.cardContent}>
-              <Title style={styles.cardTitle}>{item.name}</Title>
+              <Text style={styles.cardTitle}>{item.name}</Text>
               {item.description && (
-                <Paragraph style={styles.cardDescription}>
-                  {item.description}
-                </Paragraph>
-              )}
-
-              {/* Completion Stats */}
-              {totalTasks > 0 ? (
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressHeader}>
-                    <Text style={styles.progressText}>
-                      {completedTasks} of {totalTasks} tasks completed
-                    </Text>
-                    <Chip
-                      mode="flat"
-                      textStyle={styles.percentageChip}
-                      style={[
-                        styles.percentageChipContainer,
-                        { backgroundColor: getProgressColor() + "20" },
-                      ]}
-                    >
-                      {completionPercentage.toFixed(0)}%
-                    </Chip>
-                  </View>
-                  <ProgressBar
-                    progress={completionPercentage / 100}
-                    color={getProgressColor()}
-                    style={styles.progressBar}
-                  />
-                </View>
-              ) : (
-                <Text style={styles.noTasksText}>No tasks yet</Text>
+                <Text style={styles.cardDescription}>{item.description}</Text>
               )}
             </View>
             <View style={styles.cardActions}>
@@ -177,16 +191,22 @@ const LifeGoalsScreen = () => {
                 size={20}
                 onPress={() => handleOpenModal(item)}
                 disabled={formLoading}
+                iconColor="#ffffff"
+                style={styles.iconButton}
               />
               <IconButton
                 icon="delete"
                 size={20}
                 onPress={() => handleDelete(item)}
                 disabled={formLoading}
-                iconColor="#B00020"
+                iconColor="#ffffff"
+                style={styles.iconButton}
               />
             </View>
           </View>
+        </LinearGradient>
+        <Card.Content style={styles.cardContentArea}>
+          {renderProgressSection(item)}
         </Card.Content>
       </Card>
     );
@@ -217,7 +237,7 @@ const LifeGoalsScreen = () => {
       <FlatList
         data={lifeGoals}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={renderGoalItem}
+        renderItem={renderGoalItemFull}
         contentContainerStyle={
           lifeGoals.length === 0 ? styles.emptyContainer : styles.listContainer
         }
@@ -236,15 +256,38 @@ const LifeGoalsScreen = () => {
         }
       />
 
-      <FAB
-        icon="plus"
+      <TouchableOpacity
+        activeOpacity={0.9}
         style={styles.fab}
         onPress={() => handleOpenModal()}
         disabled={formLoading}
-      />
+      >
+        <LinearGradient
+          colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.fabGradient}
+        >
+          <View style={styles.fabContent}>
+            <Text style={styles.fabPlus}>＋</Text>
+            <Text style={styles.fabLabel}>Create Goal</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
 
       <Dialog visible={modalVisible} onDismiss={handleCloseModal}>
-        <Dialog.Title>{editingGoal ? "Edit Goal" : "Create Goal"}</Dialog.Title>
+        <Dialog.Title style={styles.dialogTitleContainer}>
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.dialogTitleGradient}
+          >
+            <Text style={styles.dialogTitle}>
+              {editingGoal ? "Edit Goal" : "Create Goal"}
+            </Text>
+          </LinearGradient>
+        </Dialog.Title>
         <Dialog.Content>
           <TextInput
             label="Goal Name"
@@ -297,6 +340,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   errorContainer: {
@@ -306,6 +350,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#ef5350",
   },
   errorText: {
+    fontFamily: "Quicksand-Regular",
     color: "#B00020",
     marginBottom: 8,
   },
@@ -323,18 +368,25 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     color: "#666",
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
+    fontFamily: "Quicksand-Regular",
     color: "#999",
     textAlign: "center",
   },
   card: {
     marginBottom: 12,
     backgroundColor: "#fff",
+    overflow: "hidden",
+    borderRadius: 12,
+  },
+  cardGradient: {
+    padding: 16,
+    paddingBottom: 16,
   },
   cardHeader: {
     flexDirection: "row",
@@ -345,15 +397,26 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  cardContentArea: {
+    paddingTop: 16,
+    backgroundColor: "#fff",
+  },
   cardTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
     marginBottom: 4,
+    color: "#ffffff",
   },
   cardDescription: {
     fontSize: 14,
-    color: "#666",
+    fontFamily: "Quicksand-Regular",
+    color: "#ffffff",
+    opacity: 0.9,
     marginTop: 4,
+  },
+  iconButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    marginLeft: 4,
   },
   cardActions: {
     flexDirection: "row",
@@ -361,10 +424,47 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    margin: 16,
     right: 0,
-    bottom: 0,
-    backgroundColor: "#6200ee",
+    bottom: 90,
+    backgroundColor: "transparent",
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    height: 56,
+    minWidth: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 0.5,
+    elevation: 20,
+  },
+  fabGradient: {
+    borderRadius: 28,
+    height: 56,
+    minWidth: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  fabContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fabPlus: {
+    color: "#fff",
+    fontSize: 22,
+    fontFamily: "Quicksand-Bold",
+    marginRight: 10,
+    marginTop: -1,
+  },
+  fabLabel: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontFamily: "Quicksand-Bold",
+    letterSpacing: 0.3,
   },
   input: {
     marginBottom: 12,
@@ -377,17 +477,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
+    minHeight: 32,
   },
   progressText: {
     fontSize: 14,
+    fontFamily: "Quicksand-Regular",
     color: "#666",
   },
   percentageChip: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "Quicksand-SemiBold",
+    paddingVertical: 2,
   },
   percentageChipContainer: {
-    height: 24,
+    minHeight: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginHorizontal: 4,
+    paddingHorizontal: 1,
   },
   progressBar: {
     height: 8,
@@ -396,9 +503,25 @@ const styles = StyleSheet.create({
   },
   noTasksText: {
     fontSize: 12,
+    fontFamily: "Quicksand-Regular",
     color: "#999",
     fontStyle: "italic",
     marginTop: 8,
+  },
+  dialogTitleContainer: {
+    backgroundColor: "transparent",
+    margin: 0,
+    padding: 0,
+  },
+  dialogTitleGradient: {
+    padding: 16,
+    paddingVertical: 18,
+  },
+  dialogTitle: {
+    fontFamily: "Quicksand-Bold",
+    fontSize: 20,
+    color: "#ffffff",
+    textAlign: "center",
   },
 });
 

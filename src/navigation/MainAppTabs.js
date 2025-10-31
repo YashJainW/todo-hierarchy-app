@@ -1,6 +1,8 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { LinearGradient } from "expo-linear-gradient";
 import DashboardScreen from "../screens/dashboard/DashboardScreen";
 import StatsScreen from "../screens/stats/StatsScreen";
 import LifeGoalsScreen from "../screens/goals/LifeGoalsScreen";
@@ -13,23 +15,47 @@ const MainAppTabs = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: "#6200ee",
+        // Header gradient
+        headerBackground: () => (
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ flex: 1 }}
+          />
+        ),
+        headerTintColor: "#ffffff",
+        headerTitleStyle: {
+          color: "#ffffff",
+          fontFamily: "Quicksand-Bold",
+        },
+        // Tab bar gradient
+        tabBarBackground: () => (
+          <LinearGradient
+            colors={["#1F114D", "#3B1CB0"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+        ),
+        tabBarActiveTintColor: "#FFFFFF",
+        tabBarInactiveTintColor: "#C5BFF3",
         tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopWidth: 1,
-          borderTopColor: "#e0e0e0",
-          paddingBottom: 5,
-          paddingTop: 5,
+          borderTopWidth: 0,
+          paddingBottom: 6,
+          paddingTop: 6,
           height: 60,
+          backgroundColor: "transparent",
+          position: "absolute",
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: "600",
+          fontFamily: "Quicksand-SemiBold",
         },
       }}
     >
       <Tab.Screen
-        name="Dashboard"
+        name="Do It"
         component={DashboardScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
