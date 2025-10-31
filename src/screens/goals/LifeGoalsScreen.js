@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
 import {
   Card,
   IconButton,
@@ -27,8 +28,11 @@ import {
   updateLifeGoal,
   deleteLifeGoal,
 } from "../../hooks/useLifeGoals";
+import supabase from "../../lib/supabase";
+import { format } from "date-fns";
 
 const LifeGoalsScreen = () => {
+  const navigation = useNavigation();
   const { lifeGoals, loading, error, refetch } = useLifeGoals();
   const isFocused = useIsFocused();
   const [modalVisible, setModalVisible] = useState(false);
@@ -37,6 +41,9 @@ const LifeGoalsScreen = () => {
   const [description, setDescription] = useState("");
   const [formLoading, setFormLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedGoalId, setExpandedGoalId] = useState(null);
+  const [goalTasks, setGoalTasks] = useState({});
+  const [loadingTasks, setLoadingTasks] = useState({});
 
   const handleOpenModal = (goal = null) => {
     if (goal) {
@@ -57,6 +64,31 @@ const LifeGoalsScreen = () => {
     setName("");
     setDescription("");
   };
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => handleOpenModal()}
+          style={styles.headerButton}
+          disabled={formLoading}
+        >
+          <LinearGradient
+            colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.headerButtonGradient}
+          >
+            <View style={styles.headerButtonContent}>
+              <Text style={styles.headerButtonPlus}>＋</Text>
+              <Text style={styles.headerButtonLabel}>Create Goal</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, formLoading]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -113,7 +145,57 @@ const LifeGoalsScreen = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
+    // Refresh tasks for expanded goal if any
+    if (expandedGoalId) {
+      await fetchGoalTasks(expandedGoalId);
+    }
     setRefreshing(false);
+  };
+
+  const fetchGoalTasks = async (goalId) => {
+    if (loadingTasks[goalId]) return; // Already loading
+
+    setLoadingTasks((prev) => ({ ...prev, [goalId]: true }));
+    try {
+      const { data, error } = await supabase
+        .from("todos")
+        .select("id, task_name, state, due_date")
+        .eq("parent_life_goal_id", goalId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setGoalTasks((prev) => ({
+        ...prev,
+        [goalId]: data || [],
+      }));
+    } catch (err) {
+      console.error("Error fetching goal tasks:", err);
+      setGoalTasks((prev) => ({
+        ...prev,
+        [goalId]: [],
+      }));
+    } finally {
+      setLoadingTasks((prev) => {
+        const next = { ...prev };
+        delete next[goalId];
+        return next;
+      });
+    }
+  };
+
+  const handleCardPress = async (goal) => {
+    if (expandedGoalId === goal.id) {
+      // Collapse
+      setExpandedGoalId(null);
+    } else {
+      // Expand
+      setExpandedGoalId(goal.id);
+      // Fetch tasks if not already loaded
+      if (!goalTasks[goal.id]) {
+        await fetchGoalTasks(goal.id);
+      }
+    }
   };
 
   const renderProgressSection = (item) => {
@@ -160,6 +242,9 @@ const LifeGoalsScreen = () => {
 
   const renderGoalItemFull = ({ item }) => {
     const completionPercentage = item.completion_percentage || 0;
+    const isExpanded = expandedGoalId === item.id;
+    const tasks = goalTasks[item.id] || [];
+    const isLoadingTasks = loadingTasks[item.id] || false;
 
     // Get gradient colors based on completion percentage
     const getCardGradient = () => {
@@ -170,44 +255,144 @@ const LifeGoalsScreen = () => {
       return ["#4CAF50", "#81C784"];
     };
 
+    const formatDate = (dateString) => {
+      if (!dateString) return null;
+      try {
+        return format(new Date(dateString), "MMM dd, yyyy");
+      } catch {
+        return null;
+      }
+    };
+
     return (
       <Card style={styles.card} mode="elevated" elevation={3}>
-        <LinearGradient
-          colors={getCardGradient()}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.cardGradient}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => handleCardPress(item)}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              {item.description && (
-                <Text style={styles.cardDescription}>{item.description}</Text>
-              )}
+          <LinearGradient
+            colors={getCardGradient()}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.cardGradient}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.cardContentWrapper}>
+                <View style={styles.cardContent}>
+                  <View style={styles.cardTitleRow}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <IconButton
+                      icon={isExpanded ? "chevron-up" : "chevron-down"}
+                      size={20}
+                      iconColor="#ffffff"
+                      style={styles.expandButton}
+                      onPress={(e) => {
+                        e?.stopPropagation?.();
+                        handleCardPress(item);
+                      }}
+                    />
+                  </View>
+                  {item.description && (
+                    <Text style={styles.cardDescription}>
+                      {item.description}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.cardActions}>
+                <IconButton
+                  icon="pencil"
+                  size={20}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    handleOpenModal(item);
+                  }}
+                  disabled={formLoading}
+                  iconColor="#ffffff"
+                  style={styles.iconButton}
+                />
+                <IconButton
+                  icon="delete"
+                  size={20}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    handleDelete(item);
+                  }}
+                  disabled={formLoading}
+                  iconColor="#ffffff"
+                  style={styles.iconButton}
+                />
+              </View>
             </View>
-            <View style={styles.cardActions}>
-              <IconButton
-                icon="pencil"
-                size={20}
-                onPress={() => handleOpenModal(item)}
-                disabled={formLoading}
-                iconColor="#ffffff"
-                style={styles.iconButton}
-              />
-              <IconButton
-                icon="delete"
-                size={20}
-                onPress={() => handleDelete(item)}
-                disabled={formLoading}
-                iconColor="#ffffff"
-                style={styles.iconButton}
-              />
-            </View>
+          </LinearGradient>
+          <Card.Content style={styles.cardContentArea}>
+            {renderProgressSection(item)}
+          </Card.Content>
+        </TouchableOpacity>
+        {isExpanded && (
+          <View style={styles.expandedSection}>
+            {isLoadingTasks ? (
+              <View style={styles.tasksLoadingContainer}>
+                <ActivityIndicator size="small" />
+                <Text style={styles.tasksLoadingText}>Loading tasks...</Text>
+              </View>
+            ) : tasks.length > 0 ? (
+              <View style={styles.tasksList}>
+                {tasks.map((task) => (
+                  <View key={task.id} style={styles.taskItem}>
+                    <View style={styles.taskItemRow}>
+                      <Text
+                        style={[
+                          styles.taskItemName,
+                          task.state === "completed" &&
+                            styles.taskItemCompleted,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {task.task_name || "Untitled Task"}
+                      </Text>
+                      {task.state && (
+                        <Chip
+                          mode="flat"
+                          textStyle={styles.taskStateChip}
+                          style={[
+                            styles.taskStateChipContainer,
+                            {
+                              backgroundColor:
+                                task.state === "completed"
+                                  ? "#4CAF50"
+                                  : task.state === "in_progress"
+                                  ? "#FF9800"
+                                  : "#9E9E9E",
+                            },
+                          ]}
+                          compact
+                        >
+                          {task.state === "completed"
+                            ? "Done"
+                            : task.state === "in_progress"
+                            ? "In Progress"
+                            : "Not Started"}
+                        </Chip>
+                      )}
+                      {task.due_date && (
+                        <Text style={styles.taskItemDate}>
+                          {formatDate(task.due_date)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.tasksEmptyContainer}>
+                <Text style={styles.tasksEmptyText}>
+                  No tasks assigned to this goal
+                </Text>
+              </View>
+            )}
           </View>
-        </LinearGradient>
-        <Card.Content style={styles.cardContentArea}>
-          {renderProgressSection(item)}
-        </Card.Content>
+        )}
       </Card>
     );
   };
@@ -246,7 +431,7 @@ const LifeGoalsScreen = () => {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No life goals yet</Text>
               <Text style={styles.emptySubtext}>
-                Tap the + button to create your first life goal
+                Tap the "Create Goal" button in the header to get started
               </Text>
             </View>
           ) : null
@@ -255,25 +440,6 @@ const LifeGoalsScreen = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       />
-
-      <TouchableOpacity
-        activeOpacity={0.9}
-        style={styles.fab}
-        onPress={() => handleOpenModal()}
-        disabled={formLoading}
-      >
-        <LinearGradient
-          colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.fabGradient}
-        >
-          <View style={styles.fabContent}>
-            <Text style={styles.fabPlus}>＋</Text>
-            <Text style={styles.fabLabel}>Create Goal</Text>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
 
       <Dialog visible={modalVisible} onDismiss={handleCloseModal}>
         <Dialog.Title style={styles.dialogTitleContainer}>
@@ -393,9 +559,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-  cardContent: {
+  cardContentWrapper: {
     flex: 1,
     marginRight: 8,
+  },
+  cardContent: {
+    flex: 1,
   },
   cardContentArea: {
     paddingTop: 16,
@@ -422,47 +591,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  fab: {
-    position: "absolute",
-    right: 0,
-    bottom: 90,
+  headerButton: {
+    marginRight: 16,
     backgroundColor: "transparent",
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    height: 56,
-    minWidth: 140,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 0.5,
-    elevation: 20,
   },
-  fabGradient: {
-    borderRadius: 28,
-    height: 56,
-    minWidth: 140,
+  headerButtonGradient: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
   },
-  fabContent: {
+  headerButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  fabPlus: {
+  headerButtonPlus: {
     color: "#fff",
-    fontSize: 22,
+    fontSize: 18,
     fontFamily: "Quicksand-Bold",
-    marginRight: 10,
-    marginTop: -1,
+    marginRight: 6,
   },
-  fabLabel: {
+  headerButtonLabel: {
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: "Quicksand-Bold",
     letterSpacing: 0.3,
   },
@@ -476,7 +631,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 12,
     minHeight: 32,
   },
   progressText: {
@@ -499,7 +654,8 @@ const styles = StyleSheet.create({
   progressBar: {
     height: 8,
     borderRadius: 4,
-    marginTop: 4,
+    marginTop: 0,
+    marginBottom: 12,
   },
   noTasksText: {
     fontSize: 12,
@@ -522,6 +678,98 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#ffffff",
     textAlign: "center",
+  },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flex: 1,
+  },
+  expandButton: {
+    margin: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  expandedSection: {
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    backgroundColor: "#fafafa",
+    paddingTop: 12,
+    paddingBottom: 8,
+    paddingHorizontal: 16,
+  },
+  tasksLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+  tasksLoadingText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontFamily: "Quicksand-Regular",
+    color: "#666",
+  },
+  tasksList: {
+    gap: 4,
+  },
+  taskItem: {
+    backgroundColor: "#fff",
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  taskItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  taskItemName: {
+    fontSize: 14,
+    fontFamily: "Quicksand-SemiBold",
+    color: "#333",
+    flex: 1,
+    marginRight: 4,
+  },
+  taskItemCompleted: {
+    textDecorationLine: "line-through",
+    color: "#999",
+  },
+  taskStateChip: {
+    fontSize: 7,
+    fontFamily: "Quicksand-SemiBold",
+    color: "#ffffff",
+    lineHeight: 10,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    marginVertical: 0,
+    marginHorizontal: 0,
+  },
+  taskStateChipContainer: {
+    height: 20,
+    width: 70,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  taskItemDate: {
+    fontSize: 11,
+    fontFamily: "Quicksand-Regular",
+    color: "#666",
+    marginLeft: 4,
+  },
+  tasksEmptyContainer: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  tasksEmptyText: {
+    fontSize: 14,
+    fontFamily: "Quicksand-Regular",
+    color: "#999",
+    fontStyle: "italic",
   },
 });
 

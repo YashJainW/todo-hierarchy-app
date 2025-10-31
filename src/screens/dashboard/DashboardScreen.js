@@ -1,18 +1,19 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   FlatList,
   View,
   RefreshControl,
   StyleSheet,
   Alert,
+  TouchableOpacity,
+  Text,
 } from "react-native";
-import { TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
 import {
   Card,
   Chip,
   IconButton,
-  Text,
   ProgressBar,
   Checkbox,
   Menu,
@@ -30,11 +31,41 @@ import { buildTaskTree } from "../../utils/taskHierarchy";
 import { format } from "date-fns";
 
 const DashboardScreen = () => {
+  const navigation = useNavigation();
   const { tasks, loading, error, refetch } = useDashboardTasks();
   const [selectedTodo, setSelectedTodo] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState({});
+
+  const openNewTaskModal = () => {
+    setSelectedTodo(null);
+    setModalVisible(true);
+  };
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={openNewTaskModal}
+          style={styles.headerButton}
+        >
+          <LinearGradient
+            colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.headerButtonGradient}
+          >
+            <View style={styles.headerButtonContent}>
+              <Text style={styles.headerButtonPlus}>＋</Text>
+              <Text style={styles.headerButtonLabel}>New Task</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -391,27 +422,6 @@ const DashboardScreen = () => {
         }
       />
 
-      <TouchableOpacity
-        activeOpacity={0.9}
-        style={styles.fab}
-        onPress={() => {
-          setSelectedTodo(null);
-          setModalVisible(true);
-        }}
-      >
-        <LinearGradient
-          colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.fabGradient}
-        >
-          <View style={styles.fabContent}>
-            <Text style={styles.fabPlus}>＋</Text>
-            <Text style={styles.fabLabel}>New Task</Text>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-
       <TodoFormModal
         visible={modalVisible}
         onDismiss={handleModalDismiss}
@@ -458,6 +468,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 0,
     borderBottomColor: "transparent",
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 16,
   },
   headerTitle: {
     fontSize: 28,
@@ -469,6 +482,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     paddingVertical: 8,
+    borderRadius: 14,
   },
   statItem: {
     alignItems: "center",
@@ -559,49 +573,33 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: "#e0e0e0",
   },
-  fab: {
-    position: "absolute",
-    right: 16,
-    bottom: 80, // Positioned above tab bar (60px) with extra padding
+  headerButton: {
+    marginRight: 16,
     backgroundColor: "transparent",
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    height: 56,
-    minWidth: 140,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 0.5,
-    elevation: 20,
   },
-  fabGradient: {
-    borderRadius: 28,
-    height: 56,
-    minWidth: 140,
+  headerButtonGradient: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
   },
-  fabContent: {
+  headerButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  fabPlus: {
+  headerButtonPlus: {
     color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
+    fontSize: 18,
     fontFamily: "Quicksand-Bold",
-    marginRight: 10,
-    marginTop: -1,
+    marginRight: 6,
   },
-  fabLabel: {
+  headerButtonLabel: {
     color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 14,
     fontFamily: "Quicksand-Bold",
     letterSpacing: 0.3,
   },

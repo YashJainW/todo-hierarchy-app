@@ -5,6 +5,9 @@ import {
   StyleSheet,
   Platform,
   Text as RNText,
+  Modal,
+  TouchableOpacity,
+  FlatList,
 } from "react-native";
 import {
   Portal,
@@ -16,7 +19,6 @@ import {
   Chip,
 } from "react-native-paper";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import RNPickerSelect from "react-native-picker-select";
 import { format } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -27,6 +29,8 @@ import {
 } from "../../hooks/useTodos";
 import supabase from "../../lib/supabase";
 import ParentConfirmationDialog from "./ParentConfirmationDialog";
+
+const NO_PARENT_VALUE = "__none__";
 
 const TodoFormModal = ({
   visible,
@@ -47,7 +51,8 @@ const TodoFormModal = ({
   const [selectedParentId, setSelectedParentId] = useState(null);
   const [selectedParentType, setSelectedParentType] = useState(null);
   // Controlled picker value (e.g., "todo:<uuid>" or "life_goal:<uuid>")
-  const [selectedParentValue, setSelectedParentValue] = useState(null);
+  const [selectedParentValue, setSelectedParentValue] =
+    useState(NO_PARENT_VALUE);
   // Guard to prevent re-sync effect from overwriting user's selection during edit
   const [userChangedParent, setUserChangedParent] = useState(false);
   const [possibleParents, setPossibleParents] = useState([]);
@@ -57,6 +62,7 @@ const TodoFormModal = ({
   // UI state
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showParentPicker, setShowParentPicker] = useState(false);
   const [errors, setErrors] = useState(null);
   const [fetchingParents, setFetchingParents] = useState(false);
 
@@ -98,7 +104,7 @@ const TodoFormModal = ({
       } else {
         setSelectedParentId(null);
         setSelectedParentType(null);
-        setSelectedParentValue(null);
+        setSelectedParentValue(NO_PARENT_VALUE);
         setPreviousParentId(null);
         setPreviousParentType(null);
       }
@@ -181,7 +187,7 @@ const TodoFormModal = ({
         // If existingTodo has no parent but we have selectedParentId, clear it
         setSelectedParentId(null);
         setSelectedParentType(null);
-        setSelectedParentValue(null);
+        setSelectedParentValue(NO_PARENT_VALUE);
       }
     }
   }, [
@@ -205,7 +211,7 @@ const TodoFormModal = ({
     setAchievementNote("");
     setSelectedParentId(null);
     setSelectedParentType(null);
-    setSelectedParentValue(null);
+    setSelectedParentValue(NO_PARENT_VALUE);
     setPreviousParentId(null);
     setPreviousParentType(null);
     setErrors(null);
@@ -291,8 +297,8 @@ const TodoFormModal = ({
   // Handle parent change
   const handleParentChange = (value) => {
     setUserChangedParent(true);
-    // Handle null, undefined, empty string, or "none" - all mean no parent
-    if (!value || value === "none" || value === null) {
+    // Treat placeholder or explicit "no parent" selections as null
+    if (!value || value === NO_PARENT_VALUE) {
       // Check if we're clearing a parent during edit (had a parent before)
       if (existingTodo && (previousParentId || previousParentType)) {
         setPendingParentChange({ id: null, type: null });
@@ -300,7 +306,7 @@ const TodoFormModal = ({
       } else {
         handleParentSelection(null, null);
       }
-      setSelectedParentValue(null);
+      setSelectedParentValue(NO_PARENT_VALUE);
       return;
     }
 
@@ -332,7 +338,7 @@ const TodoFormModal = ({
     setSelectedParentId(normalizedId);
     setSelectedParentType(parentType || null);
     if (!normalizedId || !parentType) {
-      setSelectedParentValue(null);
+      setSelectedParentValue(NO_PARENT_VALUE);
     } else {
       setSelectedParentValue(`${parentType}:${normalizedId}`);
     }
@@ -497,59 +503,92 @@ const TodoFormModal = ({
 
   // Format picker items
   const formatPickerItems = () => {
-    const items = [];
+    const items = [
+      {
+        label: "✕ None (No Parent)",
+        value: NO_PARENT_VALUE,
+        key: "none_option",
+        color: "#5A2DFF",
+      },
+    ];
 
-    // // Add placeholder as first item (to clear parent selection)
-    // items.push({
-    //   label: "Select parent (optional)",
-    //   value: null,
-    //   key: "placeholder",
-    // });
-
-    // Group by type
     const todoParents = possibleParents.filter((p) => p.type === "todo");
     const lifeGoalParents = possibleParents.filter(
       (p) => p.type === "life_goal"
     );
 
-    // Add life goals
-    lifeGoalParents.forEach((parent) => {
-      items.push({
-        label: parent.name || parent.title,
-        value: `life_goal:${parent.id}`,
-        key: `life_goal_${parent.id}`,
+    if (lifeGoalParents.length > 0) {
+      lifeGoalParents.forEach((parent) => {
+        items.push({
+          label: `🎯 ${parent.name || parent.title}`,
+          value: `life_goal:${parent.id}`,
+          key: `life_goal_${parent.id}`,
+          color: "#4527A0",
+        });
       });
-    });
+    }
 
-    // Add todo parents
-    todoParents.forEach((parent) => {
-      items.push({
-        label: `${parent.title || parent.task_name} (${parent.task_type})`,
-        value: `todo:${parent.id}`,
-        key: `todo_${parent.id}`,
+    if (todoParents.length > 0) {
+      const taskTypeEmoji = {
+        daily: "📅",
+        weekly: "📆",
+        monthly: "🗓️",
+        yearly: "📆",
+      };
+
+      todoParents.forEach((parent) => {
+        const emoji = taskTypeEmoji[parent.task_type] || "📝";
+        items.push({
+          label: `${emoji} ${parent.title || parent.task_name} (${
+            parent.task_type
+          })`,
+          value: `todo:${parent.id}`,
+          key: `todo_${parent.id}`,
+          color: "#1A237E",
+        });
       });
-    });
+    }
 
     return items;
   };
 
-  const getSelectedParentValue = () => selectedParentValue;
+  const getSelectedParentValue = () => selectedParentValue || NO_PARENT_VALUE;
+
+  // Get display text for selected parent
+  const getSelectedParentLabel = () => {
+    const value = getSelectedParentValue();
+    if (value === NO_PARENT_VALUE || !value) {
+      return "Select a parent task or goal...";
+    }
+    const items = formatPickerItems();
+    const selectedItem = items.find((item) => item.value === value);
+    return selectedItem
+      ? selectedItem.label
+      : "Select a parent task or goal...";
+  };
 
   return (
     <>
       <Portal>
         <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
-          <Dialog.Title style={styles.dialogTitle}>
-            <RNText style={styles.dialogTitleText}>
-              {existingTodo ? "Edit Task" : "Create Task"}
-            </RNText>
-          </Dialog.Title>
+          <LinearGradient
+            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.dialogHeaderGradient}
+          >
+            <Dialog.Title style={styles.dialogTitleContainer}>
+              <RNText style={styles.dialogTitleText}>
+                {existingTodo ? "Edit Task" : "Create Task"}
+              </RNText>
+            </Dialog.Title>
+          </LinearGradient>
           <Dialog.Content style={styles.dialogContent}>
             <ScrollView
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
               style={styles.scrollView}
-              nestedScrollEnabled={true}
+              nestedScrollEnabled={false}
               showsVerticalScrollIndicator={true}
               bounces={false}
             >
@@ -557,8 +596,8 @@ const TodoFormModal = ({
               <TextInput
                 label="Task Name *"
                 value={taskName}
-                onChangeText={(text) => {
-                  setTaskName(text);
+                onChangeText={setTaskName}
+                onFocus={() => {
                   if (errors) setErrors(null);
                 }}
                 mode="outlined"
@@ -692,21 +731,19 @@ const TodoFormModal = ({
               {fetchingParents ? (
                 <Text style={styles.loadingText}>Loading parents...</Text>
               ) : (
-                <RNPickerSelect
-                  onValueChange={handleParentChange}
-                  items={formatPickerItems()}
-                  value={getSelectedParentValue()}
-                  useNativeAndroidPickerStyle={false}
-                  pickerProps={{
-                    accessibilityLabel: "Select parent",
-                  }}
-                  style={{
-                    inputIOS: styles.pickerInput,
-                    inputAndroid: styles.pickerInput,
-                    placeholder: styles.pickerPlaceholder,
-                  }}
+                <TouchableOpacity
+                  style={styles.pickerContainer}
+                  onPress={() => !loading && setShowParentPicker(true)}
                   disabled={loading}
-                />
+                  activeOpacity={0.7}
+                >
+                  <RNText style={styles.pickerInput}>
+                    {getSelectedParentLabel()}
+                  </RNText>
+                  <View style={styles.pickerIconContainer}>
+                    <RNText style={styles.pickerIcon}>▾</RNText>
+                  </View>
+                </TouchableOpacity>
               )}
 
               {/* Achievement Note (if completed) */}
@@ -755,6 +792,64 @@ const TodoFormModal = ({
         />
       )}
 
+      {/* Custom Parent Picker Modal */}
+      <Modal
+        visible={showParentPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowParentPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowParentPicker(false)}
+        >
+          <View style={styles.pickerModalContent}>
+            <LinearGradient
+              colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+              style={styles.pickerModalHeader}
+            >
+              <RNText style={styles.pickerModalTitle}>Select Parent</RNText>
+              <TouchableOpacity
+                onPress={() => setShowParentPicker(false)}
+                style={styles.pickerModalCloseButton}
+              >
+                <RNText style={styles.pickerModalCloseText}>✕</RNText>
+              </TouchableOpacity>
+            </LinearGradient>
+            <FlatList
+              data={formatPickerItems()}
+              keyExtractor={(item) => item.key}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerOption,
+                    getSelectedParentValue() === item.value &&
+                      styles.pickerOptionSelected,
+                  ]}
+                  onPress={() => {
+                    handleParentChange(item.value);
+                    setShowParentPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <RNText
+                    style={[
+                      styles.pickerOptionText,
+                      getSelectedParentValue() === item.value &&
+                        styles.pickerOptionTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </RNText>
+                </TouchableOpacity>
+              )}
+              style={styles.pickerOptionsList}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Parent Change Confirmation */}
       <ParentConfirmationDialog
         visible={showParentChangeConfirm}
@@ -768,13 +863,24 @@ const TodoFormModal = ({
 
 const styles = StyleSheet.create({
   dialog: {
-    maxHeight: "85%",
+    maxHeight: "90%",
     borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: "#fff",
+    backgroundColor: "transparent",
   },
-  dialogTitle: {
-    backgroundColor: "#5A2DFF",
+  dialogHeaderGradient: {
+    // borderRadius: 12,
+    // borderBottomLeftRadius: 0,
+    // borderBottomRightRadius: 0,
+    // borderTopLeftRadius: 0,
+    // borderTopRightRadius: 0,
+    overflow: "hidden",
+    backgroundColor: "#3B1CB0",
+    borderWidth: 14,
+    borderColor: "#FFFFFF",
+  },
+  dialogTitleContainer: {
+    backgroundColor: "transparent",
     margin: 0,
     padding: 16,
     paddingVertical: 18,
@@ -846,18 +952,104 @@ const styles = StyleSheet.create({
   clearDateButton: {
     minWidth: 60,
   },
+  pickerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    zIndex: 100,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: "#5A2DFF",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#5A2DFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   pickerInput: {
     fontSize: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: "#B39DDB",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    marginBottom: 16,
+    paddingRight: 40,
+    flex: 1,
+    color: "#333",
+    fontFamily: "Quicksand-Regular",
   },
   pickerPlaceholder: {
     color: "#7E57C2",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  pickerIconContainer: {
+    position: "absolute",
+    right: 12,
+    padding: 4,
+  },
+  pickerIcon: {
+    fontSize: 16,
+    color: "#5A2DFF",
+    fontFamily: "Quicksand-Regular",
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  pickerModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "70%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  pickerModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  pickerModalTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontFamily: "Quicksand-Bold",
+  },
+  pickerModalCloseButton: {
+    padding: 4,
+  },
+  pickerModalCloseText: {
+    fontSize: 20,
+    color: "#FFFFFF",
+    fontFamily: "Quicksand-Bold",
+  },
+  pickerOptionsList: {
+    maxHeight: 400,
+  },
+  pickerOption: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  pickerOptionSelected: {
+    backgroundColor: "#EDE7F6",
+  },
+  pickerOptionText: {
+    fontSize: 16,
+    color: "#333",
+    fontFamily: "Quicksand-Regular",
+  },
+  pickerOptionTextSelected: {
+    color: "#5A2DFF",
+    fontFamily: "Quicksand-Medium",
   },
   loadingText: {
     fontSize: 14,
