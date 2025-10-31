@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FlatList,
   View,
@@ -21,6 +21,7 @@ import {
   Chip,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import {
   useLifeGoals,
   createLifeGoal,
@@ -30,6 +31,7 @@ import {
 
 const LifeGoalsScreen = () => {
   const { lifeGoals, loading, error, refetch } = useLifeGoals();
+  const isFocused = useIsFocused();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [name, setName] = useState("");
@@ -88,6 +90,13 @@ const LifeGoalsScreen = () => {
       setFormLoading(false);
     }
   };
+
+  // Auto-refresh when screen gains focus (e.g., after assigning a task to a goal)
+  useEffect(() => {
+    if (isFocused) {
+      refetch();
+    }
+  }, [isFocused]);
 
   const handleDelete = async (goal) => {
     // Let deleteLifeGoal handle the Alert with options for children

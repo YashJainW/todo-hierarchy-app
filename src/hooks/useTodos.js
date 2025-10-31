@@ -76,6 +76,26 @@ export const useStats = () => {
     fetchStats();
   }, [fetchStats]);
 
+  // Realtime: refetch stats whenever todos change (insert/update/delete)
+  useEffect(() => {
+    const channel = supabase
+      .channel("stats-todos-listener")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "todos" },
+        () => {
+          fetchStats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch (_) {}
+    };
+  }, [fetchStats]);
+
   return {
     stats,
     loading,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   FlatList,
   View,
@@ -6,8 +6,9 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
+import { TouchableOpacity } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-  FAB,
   Card,
   Chip,
   IconButton,
@@ -24,6 +25,8 @@ import {
   deleteTodo,
 } from "../../hooks/useTodos";
 import TodoFormModal from "../../components/todos/TodoFormModal";
+import TaskGroup from "../../components/todos/TaskGroup";
+import { buildTaskTree } from "../../utils/taskHierarchy";
 import { format } from "date-fns";
 
 const DashboardScreen = () => {
@@ -145,6 +148,65 @@ const DashboardScreen = () => {
     }
   };
 
+  // Build task tree from flat tasks array
+  // Use a stable reference to prevent unnecessary recalculations
+  // Only depend on tasks, not loading (loading changes shouldn't rebuild tree)
+  const taskGroups = useMemo(() => {
+    console.log(
+      "Building task groups. Tasks count:",
+      tasks?.length || 0,
+      "Loading:",
+      loading
+    );
+
+    // Don't build tree while loading - wait for actual data
+    if (loading) {
+      console.log("Still loading, returning empty array");
+      return [];
+    }
+
+    if (!tasks || tasks.length === 0) {
+      console.log("No tasks available for tree building");
+      return [];
+    }
+
+    try {
+      console.log("Sample task data:", tasks[0]);
+      console.log(
+        "Task IDs and parent_ids:",
+        tasks.slice(0, 5).map((t) => ({
+          id: t.id,
+          parent_id: t.parent_id,
+          parent_todo_id: t.parent_todo_id,
+          name: t.task_name || t.title,
+        }))
+      );
+
+      const tree = buildTaskTree(tasks);
+      // Ensure we return a valid array (never undefined)
+      const result = Array.isArray(tree) ? tree : [];
+
+      // Debug log to verify data is present
+      console.log(`Task tree result: ${result.length} root tasks`);
+      if (result.length === 0 && tasks.length > 0) {
+        console.warn("⚠️ Task tree is empty but tasks exist:", tasks.length);
+        console.warn(
+          "Sample tasks:",
+          tasks.slice(0, 3).map((t) => ({
+            id: t.id,
+            parent_id: t.parent_id,
+            parent_todo_id: t.parent_todo_id,
+          }))
+        );
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error building task tree:", error, error.stack);
+      return [];
+    }
+  }, [tasks, loading]);
+
   const getSummaryStats = () => {
     const total = tasks.length;
     const completed = tasks.filter((t) => t.state === "completed").length;
@@ -155,11 +217,14 @@ const DashboardScreen = () => {
     return { total, completed, inProgress };
   };
 
+  const handleMenuToggle = (taskId, visible) => {
+    setMenuVisible((prev) => ({ ...prev, [taskId]: visible }));
+  };
+
   const ListHeaderComponent = () => {
     const stats = getSummaryStats();
     return (
       <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Tasks</Text>
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.total}</Text>
@@ -308,11 +373,39 @@ const DashboardScreen = () => {
       )}
 
       <FlatList
-        data={tasks}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => <TodoCard item={item} />}
+        data={taskGroups}
+        keyExtractor={(item, index) => {
+          // Use a stable key that combines ID and index for better stability
+          const id = item?.id ? item.id.toString() : `root-${index}`;
+          return id;
+        }}
+        renderItem={({ item }) => {
+          // Defensive check before rendering
+          if (!item || !item.id) {
+            return null;
+          }
+          return (
+            <TaskGroup
+              key={item.id}
+              rootTask={item}
+              onToggleComplete={handleToggleComplete}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              menuVisible={menuVisible}
+              onMenuToggle={handleMenuToggle}
+              getPriorityColor={getPriorityColor}
+            />
+          );
+        }}
+        removeClippedSubviews={false}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        extraData={taskGroups.length} // Force re-render when groups change
         contentContainerStyle={
-          tasks.length === 0 ? styles.emptyContainer : styles.listContainer
+          taskGroups.length === 0 && !loading
+            ? styles.emptyContainer
+            : styles.listContainer
         }
         ListHeaderComponent={ListHeaderComponent}
         ListEmptyComponent={
@@ -334,15 +427,26 @@ const DashboardScreen = () => {
         }
       />
 
-      <FAB
-        icon="plus"
+      <TouchableOpacity
+        activeOpacity={0.9}
         style={styles.fab}
         onPress={() => {
           setSelectedTodo(null);
           setModalVisible(true);
         }}
-        label="New Task"
-      />
+      >
+        <LinearGradient
+          colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.fabGradient}
+        >
+          <View style={styles.fabContent}>
+            <Text style={styles.fabPlus}>＋</Text>
+            <Text style={styles.fabLabel}>New Task</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
 
       <TodoFormModal
         visible={modalVisible}
@@ -474,10 +578,47 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#6200ee",
+    right: 16,
+    bottom: 16,
+    backgroundColor: "transparent",
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    height: 56,
+    minWidth: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 0.5,
+    elevation: 20,
+  },
+  fabGradient: {
+    borderRadius: 28,
+    height: 56,
+    minWidth: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  fabContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fabPlus: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "800",
+    marginRight: 10,
+    marginTop: -1,
+  },
+  fabLabel: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });
 

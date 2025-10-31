@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { FlatList, View, StyleSheet, RefreshControl } from "react-native";
 import {
   Card,
@@ -13,9 +13,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { format } from "date-fns";
 import { useStats } from "../../hooks/useTodos";
+import { useIsFocused } from "@react-navigation/native";
 
 const StatsScreen = () => {
   const { stats, loading, error, refetch } = useStats();
+  const isFocused = useIsFocused();
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState("percentage"); // percentage, type, date
 
@@ -24,6 +26,13 @@ const StatsScreen = () => {
     await refetch();
     setRefreshing(false);
   };
+
+  // Auto-refresh when screen gains focus so stats reflect recent task updates
+  useEffect(() => {
+    if (isFocused) {
+      refetch();
+    }
+  }, [isFocused]);
 
   // Process and sort stats
   const processedStats = useMemo(() => {

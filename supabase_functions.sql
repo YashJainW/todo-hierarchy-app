@@ -104,6 +104,13 @@ BEGIN
       AND rt.parent_todo_id IS NULL
   ),
   task_hierarchy AS (
+    -- Include each root itself so leaf roots are counted
+    SELECT 
+      rt.id as root_id,
+      rt.id as descendant_id,
+      (SELECT t.state FROM todos t WHERE t.id = rt.id) as descendant_state
+    FROM root_tasks rt
+    UNION ALL
     -- Anchor: all direct children of root tasks
     SELECT 
       child.parent_todo_id as root_id,

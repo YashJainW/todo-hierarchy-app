@@ -39,6 +39,10 @@ const TodoFormModal = ({
   // Parent selection state
   const [selectedParentId, setSelectedParentId] = useState(null);
   const [selectedParentType, setSelectedParentType] = useState(null);
+  // Controlled picker value (e.g., "todo:<uuid>" or "life_goal:<uuid>")
+  const [selectedParentValue, setSelectedParentValue] = useState(null);
+  // Guard to prevent re-sync effect from overwriting user's selection during edit
+  const [userChangedParent, setUserChangedParent] = useState(false);
   const [possibleParents, setPossibleParents] = useState([]);
   const [previousParentId, setPreviousParentId] = useState(null);
   const [previousParentType, setPreviousParentType] = useState(null);
@@ -75,20 +79,24 @@ const TodoFormModal = ({
       if (parentId) {
         setSelectedParentId(parentId);
         setSelectedParentType("todo");
+        setSelectedParentValue(`todo:${parentId}`);
         setPreviousParentId(parentId);
         setPreviousParentType("todo");
       } else if (lifeGoalId) {
         setSelectedParentId(lifeGoalId);
         setSelectedParentType("life_goal");
+        setSelectedParentValue(`life_goal:${lifeGoalId}`);
         setPreviousParentId(lifeGoalId);
         setPreviousParentType("life_goal");
       } else {
         setSelectedParentId(null);
         setSelectedParentType(null);
+        setSelectedParentValue(null);
         setPreviousParentId(null);
         setPreviousParentType(null);
       }
       setErrors(null);
+      setUserChangedParent(false);
     } else if (!existingTodo && visible) {
       // Reset form for new todo
       resetForm();
@@ -105,6 +113,10 @@ const TodoFormModal = ({
   // Re-sync parent selection after possibleParents are fetched
   // This ensures parent is set even if possibleParents list hasn't loaded yet
   useEffect(() => {
+    // If user already changed the parent in this session, do not override it
+    if (userChangedParent) {
+      return;
+    }
     if (existingTodo && visible) {
       const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
       const lifeGoalId =
@@ -126,6 +138,7 @@ const TodoFormModal = ({
           });
           setSelectedParentId(parentIdStr);
           setSelectedParentType("todo");
+          setSelectedParentValue(`todo:${parentIdStr}`);
           if (
             !previousParentId ||
             previousParentId?.toString() !== parentIdStr
@@ -148,6 +161,7 @@ const TodoFormModal = ({
           });
           setSelectedParentId(lifeGoalIdStr);
           setSelectedParentType("life_goal");
+          setSelectedParentValue(`life_goal:${lifeGoalIdStr}`);
           if (
             !previousParentId ||
             previousParentId?.toString() !== lifeGoalIdStr
@@ -160,6 +174,7 @@ const TodoFormModal = ({
         // If existingTodo has no parent but we have selectedParentId, clear it
         setSelectedParentId(null);
         setSelectedParentType(null);
+        setSelectedParentValue(null);
       }
     }
   }, [
@@ -169,6 +184,7 @@ const TodoFormModal = ({
     fetchingParents,
     selectedParentId,
     previousParentId,
+    userChangedParent,
   ]);
 
   // Reset form function
@@ -182,9 +198,11 @@ const TodoFormModal = ({
     setAchievementNote("");
     setSelectedParentId(null);
     setSelectedParentType(null);
+    setSelectedParentValue(null);
     setPreviousParentId(null);
     setPreviousParentType(null);
     setErrors(null);
+    setUserChangedParent(false);
   };
 
   // Fetch possible parents
@@ -265,6 +283,7 @@ const TodoFormModal = ({
 
   // Handle parent change
   const handleParentChange = (value) => {
+    setUserChangedParent(true);
     // Handle null, undefined, empty string, or "none" - all mean no parent
     if (!value || value === "none" || value === null) {
       // Check if we're clearing a parent during edit (had a parent before)
@@ -274,6 +293,7 @@ const TodoFormModal = ({
       } else {
         handleParentSelection(null, null);
       }
+      setSelectedParentValue(null);
       return;
     }
 
@@ -281,10 +301,13 @@ const TodoFormModal = ({
     const parts = value.split(":");
     const parentType = parts[0];
     const parentId = parts[1];
+    setSelectedParentValue(value);
 
     // Check if parent is changing during edit
     if (
       existingTodo &&
+      // Only confirm if there WAS a previous parent
+      (previousParentId || previousParentType) &&
       (parentId !== previousParentId?.toString() ||
         parentType !== previousParentType)
     ) {
@@ -297,18 +320,25 @@ const TodoFormModal = ({
   };
 
   const handleParentSelection = (parentId, parentType) => {
-    setSelectedParentId(parentId);
-    setSelectedParentType(parentType);
+    setUserChangedParent(true);
+    const normalizedId = parentId != null ? parentId.toString() : null;
+    setSelectedParentId(normalizedId);
+    setSelectedParentType(parentType || null);
+    if (!normalizedId || !parentType) {
+      setSelectedParentValue(null);
+    } else {
+      setSelectedParentValue(`${parentType}:${normalizedId}`);
+    }
 
     // Validate hierarchy
-    if (taskType && parentId && parentType) {
+    if (taskType && normalizedId && parentType) {
       // Find the actual parent to get its task_type
       let actualParentType = parentType;
 
       if (parentType === "todo") {
         // Look up the todo parent's task_type
         const parentTodo = possibleParents.find(
-          (p) => p.type === "todo" && p.id === parentId
+          (p) => p.type === "todo" && p.id?.toString() === normalizedId
         );
         if (parentTodo && parentTodo.task_type) {
           actualParentType = parentTodo.task_type;
@@ -323,7 +353,7 @@ const TodoFormModal = ({
       } else {
         setErrors(null);
       }
-    } else if (!parentId || !parentType) {
+    } else if (!normalizedId || !parentType) {
       // No parent selected, clear errors
       setErrors(null);
     }
@@ -375,7 +405,9 @@ const TodoFormModal = ({
       if (selectedParentType === "todo") {
         // Look up the todo parent's task_type
         const parentTodo = possibleParents.find(
-          (p) => p.type === "todo" && p.id === selectedParentId
+          (p) =>
+            p.type === "todo" &&
+            p.id?.toString() === selectedParentId?.toString()
         );
         if (parentTodo && parentTodo.task_type) {
           actualParentType = parentTodo.task_type;
@@ -494,12 +526,7 @@ const TodoFormModal = ({
     return items;
   };
 
-  const getSelectedParentValue = () => {
-    if (!selectedParentId || !selectedParentType) {
-      return null; // Return null to show placeholder
-    }
-    return `${selectedParentType}:${selectedParentId}`;
-  };
+  const getSelectedParentValue = () => selectedParentValue;
 
   return (
     <>
