@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import supabase from "../lib/supabase";
+import { logger, setLoggingUserId, flushLogs } from "../utils/logger";
 
 // Create AuthContext
 const AuthContext = createContext(undefined);
@@ -21,15 +22,36 @@ export const AuthProvider = ({ children }) => {
         } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("Error getting initial session:", error);
+          logger.error("[AuthContext] Failed to get initial session:", {
+            message: error.message,
+            status: error.status,
+          });
         }
 
         if (mounted) {
           setSession(initialSession);
           setLoading(false);
+          if (initialSession) {
+            // Set user ID for logging context
+            setLoggingUserId(initialSession.user?.id);
+            logger.log(
+              "[AuthContext] Session initialized:",
+              {
+                userId: initialSession.user?.id,
+                expiresAt: initialSession.expires_at,
+              },
+              initialSession.user?.id
+            );
+          } else {
+            // Clear user ID if no session
+            setLoggingUserId(null);
+          }
         }
       } catch (error) {
-        console.error("Error in getInitialSession:", error);
+        logger.error("[AuthContext] Error in getInitialSession:", {
+          message: error.message,
+          stack: error.stack,
+        });
         if (mounted) {
           setLoading(false);
         }
@@ -41,8 +63,21 @@ export const AuthProvider = ({ children }) => {
     // Subscribe to auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (mounted) {
+        // Update logging user ID when session changes
+        const userId = session?.user?.id || null;
+        setLoggingUserId(userId);
+
+        logger.log(
+          "[AuthContext] Auth state changed:",
+          {
+            event,
+            hasSession: !!session,
+            userId,
+          },
+          userId
+        );
         setSession(session);
         setLoading(false);
       }
@@ -68,9 +103,21 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
+      const userId = data.user?.id;
+      logger.log(
+        "[AuthContext] Sign in successful:",
+        {
+          userId,
+          email: data.user?.email,
+        },
+        userId
+      );
       return { data, error: null };
     } catch (error) {
-      console.error("Sign in error:", error);
+      logger.error("[AuthContext] Sign in failed:", {
+        message: error.message,
+        status: error.status,
+      });
       return {
         data: null,
         error:
@@ -101,9 +148,21 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
+      const userId = data.user?.id;
+      logger.log(
+        "[AuthContext] Sign up successful:",
+        {
+          userId,
+          email: data.user?.email,
+        },
+        userId
+      );
       return { data, error: null };
     } catch (error) {
-      console.error("Sign up error:", error);
+      logger.error("[AuthContext] Sign up failed:", {
+        message: error.message,
+        status: error.status,
+      });
       return {
         data: null,
         error: error.message || "Failed to create account. Please try again.",
@@ -117,6 +176,11 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       setLoading(true);
+      const currentUserId = session?.user?.id;
+
+      // Flush any pending logs before signing out
+      await flushLogs();
+
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -124,9 +188,18 @@ export const AuthProvider = ({ children }) => {
       }
 
       setSession(null);
+      setLoggingUserId(null); // Clear logging user ID
+      logger.log("[AuthContext] Sign out successful", null, currentUserId);
       return { error: null };
     } catch (error) {
-      console.error("Sign out error:", error);
+      logger.error(
+        "[AuthContext] Sign out failed:",
+        {
+          message: error.message,
+          status: error.status,
+        },
+        session?.user?.id
+      );
       return {
         error: error.message || "Failed to sign out. Please try again.",
       };
@@ -147,9 +220,13 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
+      logger.log("[AuthContext] Profile update successful");
       return { data, error: null };
     } catch (error) {
-      console.error("Update profile error:", error);
+      logger.error("[AuthContext] Profile update failed:", {
+        message: error.message,
+        status: error.status,
+      });
       return {
         data: null,
         error: error.message || "Failed to update profile. Please try again.",
@@ -171,9 +248,13 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
+      logger.log("[AuthContext] Password update successful");
       return { data, error: null };
     } catch (error) {
-      console.error("Update password error:", error);
+      logger.error("[AuthContext] Password update failed:", {
+        message: error.message,
+        status: error.status,
+      });
       return {
         data: null,
         error: error.message || "Failed to update password. Please try again.",

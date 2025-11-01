@@ -21,12 +21,12 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
+import { validateHierarchyRules } from "../../hooks/useTodos";
+import { usePossibleParents } from "../../hooks/queries/useTodosQueries";
 import {
-  getPossibleParents,
-  createTodo,
-  updateTodo,
-  validateHierarchyRules,
-} from "../../hooks/useTodos";
+  useCreateTodoMutation,
+  useUpdateTodoMutation,
+} from "../../hooks/mutations/useTodoMutations";
 import supabase from "../../lib/supabase";
 import ParentConfirmationDialog from "./ParentConfirmationDialog";
 
@@ -55,16 +55,19 @@ const TodoFormModal = ({
     useState(NO_PARENT_VALUE);
   // Guard to prevent re-sync effect from overwriting user's selection during edit
   const [userChangedParent, setUserChangedParent] = useState(false);
-  const [possibleParents, setPossibleParents] = useState([]);
   const [previousParentId, setPreviousParentId] = useState(null);
   const [previousParentType, setPreviousParentType] = useState(null);
 
   // UI state
-  const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showParentPicker, setShowParentPicker] = useState(false);
   const [errors, setErrors] = useState(null);
-  const [fetchingParents, setFetchingParents] = useState(false);
+
+  // React Query hooks
+  const createTodoMutation = useCreateTodoMutation();
+  const updateTodoMutation = useUpdateTodoMutation();
+  const { data: possibleParents = [], isLoading: fetchingParents } =
+    usePossibleParents(taskType, existingTodo?.id);
 
   // Confirmation state
   const [showParentChangeConfirm, setShowParentChangeConfirm] = useState(false);
@@ -116,12 +119,8 @@ const TodoFormModal = ({
     }
   }, [existingTodo, visible]);
 
-  // Fetch possible parents when taskType changes
-  useEffect(() => {
-    if (visible && taskType) {
-      fetchPossibleParents();
-    }
-  }, [taskType, visible, existingTodo?.id]);
+  // Note: possibleParents are automatically fetched by React Query via usePossibleParents hook
+  // No manual fetching needed - React Query handles it when taskType or existingTodo?.id changes
 
   // Re-sync parent selection after possibleParents are fetched
   // This ensures parent is set even if possibleParents list hasn't loaded yet
@@ -218,81 +217,9 @@ const TodoFormModal = ({
     setUserChangedParent(false);
   };
 
-  // Fetch possible parents
-  const fetchPossibleParents = async () => {
-    try {
-      setFetchingParents(true);
-      const parents = await getPossibleParents(
-        taskType,
-        existingTodo?.id || null
-      );
-
-      // Add current parent to the list if it exists but not in the fetched list
-      // This handles cases where parent is completed or filtered but still should be selectable
-      if (existingTodo) {
-        const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
-        const lifeGoalId =
-          existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
-
-        if (parentId) {
-          const parentInList = parents?.some(
-            (p) =>
-              p.type === "todo" &&
-              (p.id === parentId || p.id?.toString() === parentId?.toString())
-          );
-
-          if (!parentInList) {
-            // Fetch the parent todo details to add it to the list
-            const { data: parentTodo } = await supabase
-              .from("todos")
-              .select("id, task_name, task_type")
-              .eq("id", parentId)
-              .single();
-
-            if (parentTodo) {
-              parents.push({
-                id: parentTodo.id,
-                task_name: parentTodo.task_name,
-                task_type: parentTodo.task_type,
-                type: "todo",
-              });
-            }
-          }
-        } else if (lifeGoalId) {
-          const goalInList = parents?.some(
-            (p) =>
-              p.type === "life_goal" &&
-              (p.id === lifeGoalId ||
-                p.id?.toString() === lifeGoalId?.toString())
-          );
-
-          if (!goalInList) {
-            // Fetch the life goal details to add it to the list
-            const { data: lifeGoal } = await supabase
-              .from("life_goals")
-              .select("id, name")
-              .eq("id", lifeGoalId)
-              .single();
-
-            if (lifeGoal) {
-              parents.push({
-                id: lifeGoal.id,
-                name: lifeGoal.name,
-                type: "life_goal",
-              });
-            }
-          }
-        }
-      }
-
-      setPossibleParents(parents || []);
-    } catch (error) {
-      console.error("Error fetching possible parents:", error);
-      setPossibleParents([]);
-    } finally {
-      setFetchingParents(false);
-    }
-  };
+  // Note: possibleParents is now fetched automatically by React Query via usePossibleParents hook
+  // The manual fetchPossibleParents function is no longer needed since React Query handles fetching
+  // based on taskType and existingTodo?.id changes
 
   // Handle parent change
   const handleParentChange = (value) => {
@@ -446,58 +373,61 @@ const TodoFormModal = ({
       return;
     }
 
-    setLoading(true);
     setErrors(null);
 
-    try {
-      // Prepare data object
-      const todoData = {
-        title: taskName.trim(),
-        task_name: taskName.trim(),
-        description: description.trim() || null,
-        priority: priority,
-        task_type: taskType,
-        due_date: dueDate ? dueDate.toISOString() : null,
-      };
+    // Prepare data object
+    const todoData = {
+      title: taskName.trim(),
+      task_name: taskName.trim(),
+      description: description.trim() || null,
+      priority: priority,
+      task_type: taskType,
+      due_date: dueDate ? dueDate.toISOString() : null,
+    };
 
-      // Only include parent_todo_id OR life_goal_id (not both)
-      if (selectedParentId && selectedParentType === "todo") {
-        todoData.parent_id = selectedParentId;
-        todoData.life_goal_id = null;
-      } else if (selectedParentId && selectedParentType === "life_goal") {
-        todoData.life_goal_id = selectedParentId;
-        todoData.parent_id = null;
-      } else {
-        todoData.parent_id = null;
-        todoData.life_goal_id = null;
+    // Only include parent_todo_id OR life_goal_id (not both)
+    if (selectedParentId && selectedParentType === "todo") {
+      todoData.parent_id = selectedParentId;
+      todoData.life_goal_id = null;
+    } else if (selectedParentId && selectedParentType === "life_goal") {
+      todoData.life_goal_id = selectedParentId;
+      todoData.parent_id = null;
+    } else {
+      todoData.parent_id = null;
+      todoData.life_goal_id = null;
+    }
+
+    // Add state and achievement note if editing
+    if (existingTodo) {
+      todoData.state = state;
+      if (state === "completed" && achievementNote.trim()) {
+        todoData.achievement_note = achievementNote.trim();
       }
+    }
 
-      // Add state and achievement note if editing
-      if (existingTodo) {
-        todoData.state = state;
-        if (state === "completed" && achievementNote.trim()) {
-          todoData.achievement_note = achievementNote.trim();
+    if (existingTodo) {
+      updateTodoMutation.mutate(
+        { id: existingTodo.id, updates: todoData },
+        {
+          onSuccess: () => {
+            resetForm();
+            onSuccess();
+          },
+          onError: (error) => {
+            setErrors(error.message || "Failed to update task");
+          },
         }
-      }
-
-      let result;
-      if (existingTodo) {
-        result = await updateTodo(existingTodo.id, todoData);
-      } else {
-        result = await createTodo(todoData);
-      }
-
-      if (result.error) {
-        setErrors(result.error);
-      } else {
-        resetForm();
-        onSuccess();
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      setErrors(error.message || "Failed to save task");
-    } finally {
-      setLoading(false);
+      );
+    } else {
+      createTodoMutation.mutate(todoData, {
+        onSuccess: () => {
+          resetForm();
+          onSuccess();
+        },
+        onError: (error) => {
+          setErrors(error.message || "Failed to create task");
+        },
+      });
     }
   };
 
@@ -602,7 +532,9 @@ const TodoFormModal = ({
                 }}
                 mode="outlined"
                 style={styles.input}
-                disabled={loading}
+                disabled={
+                  createTodoMutation.isPending || updateTodoMutation.isPending
+                }
               />
 
               {/* Description Input */}
@@ -614,48 +546,83 @@ const TodoFormModal = ({
                 multiline
                 numberOfLines={3}
                 style={styles.input}
-                disabled={loading}
+                disabled={
+                  createTodoMutation.isPending || updateTodoMutation.isPending
+                }
               />
 
-              {/* Task Type Segmented Buttons */}
+              {/* Task Type Chips - Grid Layout */}
               <Text style={styles.label}>Task Type *</Text>
-              <SegmentedButtons
-                value={taskType}
-                onValueChange={(value) => {
-                  setTaskType(value);
-                  // Reset parent selection when type changes
-                  setSelectedParentId(null);
-                  setSelectedParentType(null);
-                  if (errors) setErrors(null);
-                }}
-                buttons={[
-                  {
-                    value: "daily",
-                    label: "Daily",
-                    style: styles.segmentButton,
-                    labelStyle: styles.segmentLabel,
-                  },
-                  {
-                    value: "weekly",
-                    label: "Weekly",
-                    style: styles.segmentButton,
-                    labelStyle: styles.segmentLabel,
-                  },
-                  {
-                    value: "monthly",
-                    label: "Monthly",
-                    style: styles.segmentButton,
-                    labelStyle: styles.segmentLabel,
-                  },
-                  {
-                    value: "yearly",
-                    label: "Yearly",
-                    style: styles.segmentButton,
-                    labelStyle: styles.segmentLabel,
-                  },
-                ]}
-                style={styles.segmentedButtons}
-              />
+              <View style={styles.taskTypeContainer}>
+                <Chip
+                  selected={taskType === "daily"}
+                  onPress={() => {
+                    setTaskType("daily");
+                    // Reset parent selection when type changes
+                    setSelectedParentId(null);
+                    setSelectedParentType(null);
+                    if (errors) setErrors(null);
+                  }}
+                  style={styles.taskTypeChip}
+                  mode={taskType === "daily" ? "flat" : "outlined"}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
+                >
+                  Daily
+                </Chip>
+                <Chip
+                  selected={taskType === "weekly"}
+                  onPress={() => {
+                    setTaskType("weekly");
+                    // Reset parent selection when type changes
+                    setSelectedParentId(null);
+                    setSelectedParentType(null);
+                    if (errors) setErrors(null);
+                  }}
+                  style={styles.taskTypeChip}
+                  mode={taskType === "weekly" ? "flat" : "outlined"}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
+                >
+                  Weekly
+                </Chip>
+                <Chip
+                  selected={taskType === "monthly"}
+                  onPress={() => {
+                    setTaskType("monthly");
+                    // Reset parent selection when type changes
+                    setSelectedParentId(null);
+                    setSelectedParentType(null);
+                    if (errors) setErrors(null);
+                  }}
+                  style={styles.taskTypeChip}
+                  mode={taskType === "monthly" ? "flat" : "outlined"}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
+                >
+                  Monthly
+                </Chip>
+                <Chip
+                  selected={taskType === "yearly"}
+                  onPress={() => {
+                    setTaskType("yearly");
+                    // Reset parent selection when type changes
+                    setSelectedParentId(null);
+                    setSelectedParentType(null);
+                    if (errors) setErrors(null);
+                  }}
+                  style={styles.taskTypeChip}
+                  mode={taskType === "yearly" ? "flat" : "outlined"}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
+                >
+                  Yearly
+                </Chip>
+              </View>
 
               {/* Priority Chips */}
               <Text style={styles.label}>Priority</Text>
@@ -710,7 +677,9 @@ const TodoFormModal = ({
                   mode="outlined"
                   onPress={() => setShowDatePicker(true)}
                   style={styles.dateButton}
-                  disabled={loading}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
                 >
                   {dueDate ? format(dueDate, "PPP") : "Select Due Date"}
                 </Button>
@@ -719,7 +688,10 @@ const TodoFormModal = ({
                     mode="text"
                     onPress={clearDate}
                     style={styles.clearDateButton}
-                    disabled={loading}
+                    disabled={
+                      createTodoMutation.isPending ||
+                      updateTodoMutation.isPending
+                    }
                   >
                     Clear
                   </Button>
@@ -733,8 +705,15 @@ const TodoFormModal = ({
               ) : (
                 <TouchableOpacity
                   style={styles.pickerContainer}
-                  onPress={() => !loading && setShowParentPicker(true)}
-                  disabled={loading}
+                  onPress={() =>
+                    !(
+                      createTodoMutation.isPending ||
+                      updateTodoMutation.isPending
+                    ) && setShowParentPicker(true)
+                  }
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
                   activeOpacity={0.7}
                 >
                   <RNText style={styles.pickerInput}>
@@ -756,7 +735,9 @@ const TodoFormModal = ({
                   multiline
                   numberOfLines={3}
                   style={styles.input}
-                  disabled={loading}
+                  disabled={
+                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  }
                 />
               )}
 
@@ -766,13 +747,24 @@ const TodoFormModal = ({
           </Dialog.Content>
 
           <Dialog.Actions style={styles.dialogActions}>
-            <Button onPress={onDismiss} disabled={loading}>
+            <Button
+              onPress={onDismiss}
+              disabled={
+                createTodoMutation.isPending || updateTodoMutation.isPending
+              }
+            >
               Cancel
             </Button>
             <Button
               onPress={handleSubmit}
-              loading={loading}
-              disabled={!isFormValid() || loading}
+              loading={
+                createTodoMutation.isPending || updateTodoMutation.isPending
+              }
+              disabled={
+                !isFormValid() ||
+                createTodoMutation.isPending ||
+                updateTodoMutation.isPending
+              }
               mode="contained"
             >
               {existingTodo ? "Update" : "Create"}
@@ -933,6 +925,18 @@ const styles = StyleSheet.create({
   },
   segmentLabel: {
     fontSize: 14,
+  },
+  taskTypeContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 16,
+    justifyContent: "space-between",
+  },
+  taskTypeChip: {
+    width: "48%",
+    marginBottom: 12,
+    justifyContent: "center",
+    alignItems: "center",
   },
   chipContainer: {
     flexDirection: "row",

@@ -7,6 +7,7 @@ import {
   Alert,
   TouchableOpacity,
   Text,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
@@ -20,23 +21,55 @@ import {
   ActivityIndicator,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useDashboardTasks } from "../../hooks/queries/useTodosQueries";
 import {
-  useDashboardTasks,
-  updateTodo,
-  deleteTodo,
-} from "../../hooks/useTodos";
+  useUpdateTodoMutation,
+  useDeleteTodoMutation,
+} from "../../hooks/mutations/useTodoMutations";
 import TodoFormModal from "../../components/todos/TodoFormModal";
 import TaskGroup from "../../components/todos/TaskGroup";
 import { buildTaskTree } from "../../utils/taskHierarchy";
-import { format } from "date-fns";
+import {
+  format,
+  isSameDay,
+  startOfDay,
+  isSameWeek,
+  isSameMonth,
+  isSameYear,
+  isBefore,
+  isAfter,
+} from "date-fns";
 
 const DashboardScreen = () => {
   const navigation = useNavigation();
-  const { tasks, loading, error, refetch } = useDashboardTasks();
+  const { data: tasks = [], isLoading, error, refetch } = useDashboardTasks();
+  const updateTodoMutation = useUpdateTodoMutation();
+  const deleteTodoMutation = useDeleteTodoMutation();
   const [selectedTodo, setSelectedTodo] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState({});
+
+  // Date selection state
+  const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Get today's date (at start of day for comparison)
+  const today = useMemo(() => startOfDay(new Date()), []);
+
+  // Check if selected date is today
+  const isToday = useMemo(
+    () => isSameDay(selectedDate, today),
+    [selectedDate, today]
+  );
+
+  // Check if selected date is a future date
+  const isFutureDate = useMemo(
+    () => selectedDate > today,
+    [selectedDate, today]
+  );
 
   const openNewTaskModal = () => {
     setSelectedTodo(null);
@@ -79,28 +112,16 @@ const DashboardScreen = () => {
   };
 
   const handleDelete = async (todo) => {
-    // Let deleteTodo handle the Alert with options for children
-    const result = await deleteTodo(todo.id, true);
-    if (result.error) {
-      // Only show error if it's not a cancellation
-      if (result.error !== "Deletion cancelled") {
-        Alert.alert("Error", result.error);
-      }
-    } else {
-      refetch();
-    }
+    // Use mutation hook - it handles errors and refetching automatically
+    deleteTodoMutation.mutate({ id: todo.id, showAlert: true });
   };
 
-  const handleToggleComplete = async (todo) => {
+  const handleToggleComplete = (todo) => {
     const isCompleted = todo.state === "completed";
     const nextState = isCompleted ? "not_started" : "completed";
 
-    const result = await updateTodo(todo.id, { state: nextState });
-    if (result?.error) {
-      Alert.alert("Error", result.error);
-    } else {
-      refetch();
-    }
+    // Use mutation with optimistic updates - UI updates instantly!
+    updateTodoMutation.mutate({ id: todo.id, updates: { state: nextState } });
   };
 
   const handleModalDismiss = () => {
@@ -109,7 +130,7 @@ const DashboardScreen = () => {
   };
 
   const handleModalSuccess = () => {
-    refetch();
+    // React Query will automatically refetch after mutations
     handleModalDismiss();
   };
 
@@ -135,19 +156,99 @@ const DashboardScreen = () => {
     }
   };
 
-  // Build task tree from flat tasks array
+  // Format date for display
+  const formatSelectedDate = (date) => {
+    if (isSameDay(date, today)) {
+      return "Today";
+    }
+    return format(date, "MMM dd, yyyy");
+  };
+
+  // Check if a leaf todo should be visible based on selected date
+  const shouldShowLeafTodo = (todo) => {
+    // Only filter leaf todos (todos without children)
+    const isLeafTodo = !todo.children_count || todo.children_count === 0;
+    if (!isLeafTodo) {
+      return false; // Non-leaf todos are filtered here, will be included if they have matching children
+    }
+
+    // Must have a due_date and task_type
+    if (!todo.due_date || !todo.task_type) {
+      return false;
+    }
+
+    const dueDate = startOfDay(new Date(todo.due_date));
+    const taskType = todo.task_type.toLowerCase();
+
+    switch (taskType) {
+      case "daily":
+        // Daily: show if due date is same as selected date
+        return isSameDay(dueDate, selectedDate);
+
+      case "weekly":
+        // Weekly: show if selected date is before or equal to due date AND in same week
+        return (
+          (isBefore(selectedDate, dueDate) ||
+            isSameDay(selectedDate, dueDate)) &&
+          isSameWeek(selectedDate, dueDate)
+        );
+
+      case "monthly":
+        // Monthly: show if selected date is before or equal to due date AND in same month
+        return (
+          (isBefore(selectedDate, dueDate) ||
+            isSameDay(selectedDate, dueDate)) &&
+          isSameMonth(selectedDate, dueDate)
+        );
+
+      case "yearly":
+        // Yearly: show if selected date is before or equal to due date AND in same year
+        return (
+          (isBefore(selectedDate, dueDate) ||
+            isSameDay(selectedDate, dueDate)) &&
+          isSameYear(selectedDate, dueDate)
+        );
+
+      default:
+        return false;
+    }
+  };
+
+  // Get all ancestor IDs of a task (parents, grandparents, etc.)
+  const getAncestorIds = (task, allTasks) => {
+    const ancestorIds = new Set();
+    let currentTask = task;
+
+    while (currentTask) {
+      const parentId = currentTask.parent_id || currentTask.parent_todo_id;
+      if (!parentId) break;
+
+      const parent = allTasks.find(
+        (t) => t.id === parentId || t.id?.toString() === parentId?.toString()
+      );
+      if (!parent) break;
+
+      ancestorIds.add(parent.id?.toString() || parent.id);
+      currentTask = parent;
+    }
+
+    return ancestorIds;
+  };
+
+  // Build task tree from flat tasks array with date filtering
   // Use a stable reference to prevent unnecessary recalculations
-  // Only depend on tasks, not loading (loading changes shouldn't rebuild tree)
   const taskGroups = useMemo(() => {
     console.log(
       "Building task groups. Tasks count:",
       tasks?.length || 0,
       "Loading:",
-      loading
+      isLoading,
+      "Selected date:",
+      selectedDate
     );
 
     // Don't build tree while loading - wait for actual data
-    if (loading) {
+    if (isLoading) {
       console.log("Still loading, returning empty array");
       return [];
     }
@@ -158,6 +259,38 @@ const DashboardScreen = () => {
     }
 
     try {
+      // Step 1: Identify leaf todos that match the selected date
+      const matchingLeafTodos = tasks.filter((task) =>
+        shouldShowLeafTodo(task)
+      );
+      const matchingLeafTodoIds = new Set(
+        matchingLeafTodos.map((t) => t.id?.toString() || t.id)
+      );
+
+      console.log(
+        `Found ${matchingLeafTodos.length} matching leaf todos for date:`,
+        formatSelectedDate(selectedDate)
+      );
+
+      // Step 2: Include all ancestors of matching leaf todos
+      const ancestorIds = new Set();
+      matchingLeafTodos.forEach((leafTodo) => {
+        const ancestors = getAncestorIds(leafTodo, tasks);
+        ancestors.forEach((id) => ancestorIds.add(id));
+      });
+
+      // Step 3: Filter tasks to include:
+      // - All matching leaf todos
+      // - All ancestors of matching leaf todos
+      const filteredTasks = tasks.filter((task) => {
+        const taskId = task.id?.toString() || task.id;
+        return matchingLeafTodoIds.has(taskId) || ancestorIds.has(taskId);
+      });
+
+      console.log(
+        `Filtered to ${filteredTasks.length} tasks (including ancestors)`
+      );
+
       console.log("Sample task data:", tasks[0]);
       console.log(
         "Task IDs and parent_ids:",
@@ -169,7 +302,7 @@ const DashboardScreen = () => {
         }))
       );
 
-      const tree = buildTaskTree(tasks);
+      const tree = buildTaskTree(filteredTasks);
       // Ensure we return a valid array (never undefined)
       const result = Array.isArray(tree) ? tree : [];
 
@@ -192,7 +325,7 @@ const DashboardScreen = () => {
       console.error("Error building task tree:", error, error.stack);
       return [];
     }
-  }, [tasks, loading]);
+  }, [tasks, isLoading, selectedDate]);
 
   const getSummaryStats = () => {
     const total = tasks.length;
@@ -208,36 +341,138 @@ const DashboardScreen = () => {
     setMenuVisible((prev) => ({ ...prev, [taskId]: visible }));
   };
 
+  // Date navigation handlers
+  const handleDateNavigation = (direction) => {
+    const newDate = new Date(selectedDate);
+    if (direction === "forward") {
+      // Forward movement is always allowed
+      newDate.setDate(newDate.getDate() + 1);
+      setSelectedDate(startOfDay(newDate));
+    } else if (direction === "backward") {
+      // Backward movement is only allowed on future dates (not on today)
+      if (isFutureDate) {
+        newDate.setDate(newDate.getDate() - 1);
+        // Ensure we don't go past today
+        const adjustedDate = startOfDay(newDate);
+        if (adjustedDate >= today) {
+          setSelectedDate(adjustedDate);
+        } else {
+          setSelectedDate(today);
+        }
+      }
+    }
+  };
+
+  // Date picker handlers
+  const handleDatePickerOpen = () => {
+    setShowDatePicker(true);
+  };
+
+  const handleDatePickerChange = (event, pickedDate) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+
+    if (event.type !== "dismissed" && pickedDate) {
+      const adjustedDate = startOfDay(pickedDate);
+      // Only allow dates from today onwards
+      if (adjustedDate >= today) {
+        setSelectedDate(adjustedDate);
+      }
+      if (Platform.OS === "ios") {
+        setShowDatePicker(false);
+      }
+    } else if (Platform.OS === "ios" && event.type === "dismissed") {
+      setShowDatePicker(false);
+    }
+  };
+
   const ListHeaderComponent = () => {
     const stats = getSummaryStats();
     return (
-      <LinearGradient
-        colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.headerGradient}
-      >
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.total}
-            </Text>
-            <Text style={styles.statLabelLight}>Total</Text>
+      <View>
+        <LinearGradient
+          colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.total}
+              </Text>
+              <Text style={styles.statLabelLight}>Total</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.completed}
+              </Text>
+              <Text style={styles.statLabelLight}>Completed</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.inProgress}
+              </Text>
+              <Text style={styles.statLabelLight}>In Progress</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.completed}
-            </Text>
-            <Text style={styles.statLabelLight}>Completed</Text>
+        </LinearGradient>
+
+        {/* Date Selection Section */}
+        <LinearGradient
+          colors={["#FFFFFF", "#F8F5FF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.dateSelectionGradient}
+        >
+          <View style={styles.dateSelectionContent}>
+            <TouchableOpacity
+              onPress={() => handleDateNavigation("backward")}
+              disabled={!isFutureDate}
+              style={[
+                styles.dateNavButton,
+                !isFutureDate && styles.dateNavButtonDisabled,
+              ]}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="chevron-left"
+                size={24}
+                color={isFutureDate ? "#5A2DFF" : "#C5BFF3"}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleDatePickerOpen}
+              style={styles.dateDisplayButton}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dateDisplayText}>
+                {formatSelectedDate(selectedDate)}
+              </Text>
+              <MaterialCommunityIcons
+                name="calendar"
+                size={20}
+                color="#5A2DFF"
+                style={styles.calendarIcon}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleDateNavigation("forward")}
+              style={styles.dateNavButton}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color="#5A2DFF"
+              />
+            </TouchableOpacity>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.inProgress}
-            </Text>
-            <Text style={styles.statLabelLight}>In Progress</Text>
-          </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </View>
     );
   };
 
@@ -347,8 +582,8 @@ const DashboardScreen = () => {
     );
   };
 
-  // Show loader on initial load (when loading is true)
-  if (loading) {
+  // Show loader on initial load (when isLoading is true)
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centerContainer}>
@@ -398,14 +633,14 @@ const DashboardScreen = () => {
         windowSize={10}
         extraData={taskGroups.length} // Force re-render when groups change
         contentContainerStyle={
-          taskGroups.length === 0 && !loading
-            ? styles.emptyContainer
+          taskGroups.length === 0 && !isLoading
+            ? [styles.listContainer, styles.emptyContainer]
             : styles.listContainer
         }
         ListHeaderComponent={ListHeaderComponent}
         ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
+          !isLoading ? (
+            <View style={styles.emptyMessageContainer}>
               <Text style={styles.emptyText}>No tasks yet</Text>
               <Text style={styles.emptySubtext}>
                 Tap the + button to create your first task
@@ -428,6 +663,17 @@ const DashboardScreen = () => {
         existingTodo={selectedTodo}
         onSuccess={handleModalSuccess}
       />
+
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={handleDatePickerChange}
+          minimumDate={today}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -465,12 +711,65 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e0e0e0",
   },
   headerGradient: {
-    padding: 16,
+    padding: 12,
     borderBottomWidth: 0,
     borderBottomColor: "transparent",
     borderRadius: 14,
     overflow: "hidden",
     marginBottom: 16,
+  },
+  dateSelectionGradient: {
+    padding: 16,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#EDE7F6",
+    shadowColor: "#5A2DFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 16,
+  },
+  dateSelectionContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 0,
+  },
+  dateNavButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#EDE7F6",
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 40,
+    minHeight: 40,
+  },
+  dateNavButtonDisabled: {
+    backgroundColor: "#F5F5F5",
+  },
+  dateDisplayButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EDE7F6",
+  },
+  dateDisplayText: {
+    fontSize: 16,
+    fontFamily: "Quicksand-SemiBold",
+    color: "#3B1CB0",
+    marginRight: 8,
+  },
+  calendarIcon: {
+    marginLeft: 4,
   },
   headerTitle: {
     fontSize: 28,
@@ -481,14 +780,14 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingVertical: 8,
+    paddingVertical: 4,
     borderRadius: 14,
   },
   statItem: {
     alignItems: "center",
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold",
     fontFamily: "Quicksand-Bold",
     color: "#6200ee",
@@ -508,19 +807,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   statLabelLight: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Quicksand-Regular",
     color: "#EDE7F6",
-    marginTop: 4,
+    marginTop: 2,
   },
   listContainer: {
     padding: 16,
   },
   emptyContainer: {
-    flex: 1,
+    flexGrow: 1,
+    minHeight: 200,
+  },
+  emptyMessageContainer: {
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    paddingVertical: 32,
   },
   emptyText: {
     fontSize: 18,

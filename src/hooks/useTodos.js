@@ -1,152 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
 import supabase from "../lib/supabase";
 import { Alert } from "react-native";
 
-// Custom hook for dashboard tasks
-export const useDashboardTasks = () => {
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const fetchTasks = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error: fetchError } = await supabase.rpc(
-        "get_dashboard_tasks"
-      );
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setTasks(data || []);
-    } catch (err) {
-      console.error("Error fetching dashboard tasks:", err);
-      setError(err.message || "Failed to fetch dashboard tasks");
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  return {
-    tasks,
-    loading,
-    error,
-    refetch: fetchTasks,
-  };
-};
-
-// Custom hook for statistics
-export const useStats = () => {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error: fetchError } = await supabase.rpc(
-        "get_hierarchy_stats"
-      );
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setStats(data || null);
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-      setError(err.message || "Failed to fetch statistics");
-      setStats(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  // Realtime: refetch stats whenever todos change (insert/update/delete)
-  useEffect(() => {
-    const channel = supabase
-      .channel("stats-todos-listener")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "todos" },
-        () => {
-          fetchStats();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      try {
-        supabase.removeChannel(channel);
-      } catch (_) {}
-    };
-  }, [fetchStats]);
-
-  return {
-    stats,
-    loading,
-    error,
-    refetch: fetchStats,
-  };
-};
-
-// Custom hook for todo children
-export const useTodoChildren = (parentId) => {
-  const [children, setChildren] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchChildren = useCallback(async () => {
-    if (!parentId) {
-      setChildren([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const { data, error: fetchError } = await supabase.rpc(
-        "get_todo_children",
-        { parent_id_param: parentId }
-      );
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setChildren(data || []);
-    } catch (err) {
-      console.error("Error fetching todo children:", err);
-      setChildren([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [parentId]);
-
-  useEffect(() => {
-    fetchChildren();
-  }, [fetchChildren]);
-
-  return {
-    children,
-    loading,
-    refetch: fetchChildren,
-  };
-};
+/**
+ * This file now contains only mutation functions and helper utilities.
+ * Query hooks have been moved to src/hooks/queries/useTodosQueries.js
+ * Mutation hooks have been moved to src/hooks/mutations/useTodoMutations.js
+ */
 
 // Get possible parent todos for a given task type
 export const getPossibleParents = async (taskType, currentTodoId = null) => {
@@ -328,6 +187,151 @@ export const createTodo = async (todoData) => {
   }
 };
 
+// Helper function to recursively check parent when child is checked and all siblings are complete
+const cascadeCheckParent = async (childId) => {
+  try {
+    // Get user ID
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      return;
+    }
+
+    // Get the child task to find its parent
+    const { data: childTask, error: childError } = await supabase
+      .from("todos")
+      .select("parent_todo_id, state")
+      .eq("id", childId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (childError || !childTask || !childTask.parent_todo_id) {
+      // No parent or error, stop cascading
+      return;
+    }
+
+    // Get all siblings (including the child we just checked)
+    const { data: siblings, error: siblingsError } = await supabase
+      .from("todos")
+      .select("id, state")
+      .eq("parent_todo_id", childTask.parent_todo_id)
+      .eq("user_id", user.id);
+
+    if (siblingsError) {
+      console.error("Error fetching siblings:", siblingsError);
+      return;
+    }
+
+    // Check if all siblings are now completed
+    const allSiblingsComplete =
+      siblings &&
+      siblings.length > 0 &&
+      siblings.every((sibling) => sibling.state === "completed");
+
+    if (!allSiblingsComplete) {
+      // Not all siblings are complete, don't check parent
+      return;
+    }
+
+    // Get the parent task
+    const { data: parentTask, error: parentError } = await supabase
+      .from("todos")
+      .select("id, state")
+      .eq("id", childTask.parent_todo_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (parentError || !parentTask) {
+      console.error("Error fetching parent:", parentError);
+      return;
+    }
+
+    // If parent is not already completed, check it
+    if (parentTask.state !== "completed") {
+      const { error: updateError } = await supabase
+        .from("todos")
+        .update({
+          state: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", parentTask.id);
+
+      if (updateError) {
+        console.error("Error updating parent:", updateError);
+        return;
+      }
+
+      // Recursively cascade up to grandparent
+      await cascadeCheckParent(parentTask.id);
+    }
+  } catch (error) {
+    console.error("Error in cascadeCheckParent:", error);
+  }
+};
+
+// Helper function to recursively check all children when parent is completed
+const cascadeCheckChildren = async (parentId) => {
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      return;
+    }
+
+    const { data: children, error: childrenError } = await supabase
+      .from("todos")
+      .select("id, state")
+      .eq("parent_todo_id", parentId)
+      .eq("user_id", user.id);
+
+    if (childrenError) {
+      console.error("Error fetching children:", childrenError);
+      return;
+    }
+
+    if (!children || children.length === 0) {
+      return;
+    }
+
+    const childrenToCheck = children.filter(
+      (child) => child.state !== "completed"
+    );
+
+    if (childrenToCheck.length > 0) {
+      const { error: updateError } = await supabase
+        .from("todos")
+        .update({
+          state: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .in(
+          "id",
+          childrenToCheck.map((c) => c.id)
+        );
+
+      if (updateError) {
+        console.error("Error checking children:", updateError);
+        return;
+      }
+    }
+
+    // Recursively check grandchildren for ALL children (ensures deeper levels complete)
+    for (const child of children) {
+      await cascadeCheckChildren(child.id);
+    }
+  } catch (error) {
+    console.error("Error in cascadeCheckChildren:", error);
+  }
+};
+
 // Helper function to recursively uncheck parent when child is unchecked
 const cascadeUncheckParent = async (childId) => {
   try {
@@ -460,6 +464,10 @@ export const updateTodo = async (id, updates) => {
     // Handle completion state changes
     const updateData = { ...updates };
 
+    let shouldCascadeCheckChildren = false;
+    let shouldCascadeCheckParent = false;
+    let shouldCascadeUncheck = false;
+
     if (updates.state !== undefined) {
       // Get current state to check if we're transitioning
       const { data: currentTodo, error: currentError } = await supabase
@@ -478,17 +486,14 @@ export const updateTodo = async (id, updates) => {
       // If state changing to 'completed', set completed_at
       if (newState === "completed" && currentState !== "completed") {
         updateData.completed_at = new Date().toISOString();
+        shouldCascadeCheckChildren = true;
+        shouldCascadeCheckParent = true;
       }
 
       // If state changing from 'completed', set completed_at to null
       if (currentState === "completed" && newState !== "completed") {
         updateData.completed_at = null;
-
-        // Cascade uncheck to all children (down the hierarchy)
-        await cascadeUncheckChildren(id);
-
-        // Cascade uncheck to parent (up the hierarchy)
-        await cascadeUncheckParent(id);
+        shouldCascadeUncheck = true;
       }
     }
 
@@ -539,6 +544,20 @@ export const updateTodo = async (id, updates) => {
 
     if (error) {
       throw error;
+    }
+
+    // Perform cascades after the update succeeds so the database state is current
+    if (shouldCascadeCheckChildren) {
+      await cascadeCheckChildren(id);
+    }
+
+    if (shouldCascadeCheckParent) {
+      await cascadeCheckParent(id);
+    }
+
+    if (shouldCascadeUncheck) {
+      await cascadeUncheckChildren(id);
+      await cascadeUncheckParent(id);
     }
 
     return { data, error: null };

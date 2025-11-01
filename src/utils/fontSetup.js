@@ -32,9 +32,6 @@ export const setupGlobalFonts = () => {
       ? [{ fontFamily }, existingInputStyle]
       : { fontFamily };
 
-    console.log(`✅ Global font setup completed - Using font: ${fontFamily}`);
-    console.log(`   Text.defaultProps:`, Text.defaultProps);
-    console.log(`   TextInput.defaultProps:`, TextInput.defaultProps);
     return true;
   } catch (error) {
     console.warn("⚠️ Could not setup global fonts:", error);

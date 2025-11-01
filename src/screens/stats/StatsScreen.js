@@ -19,11 +19,11 @@ import {
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { format } from "date-fns";
-import { useStats } from "../../hooks/useTodos";
+import { useStats } from "../../hooks/queries/useTodosQueries";
 import { useIsFocused } from "@react-navigation/native";
 
 const StatsScreen = () => {
-  const { stats, loading, error, refetch } = useStats();
+  const { data: stats, isLoading, error, refetch } = useStats();
   const isFocused = useIsFocused();
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState("percentage"); // percentage, type, date
@@ -266,7 +266,7 @@ const StatsScreen = () => {
     );
   };
 
-  if (loading && (!stats || stats.length === 0)) {
+  if (isLoading && (!stats || stats.length === 0)) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centerContainer}>
@@ -306,7 +306,7 @@ const StatsScreen = () => {
           </>
         }
         ListEmptyComponent={
-          !loading ? (
+          !isLoading ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No statistics available</Text>
               <Text style={styles.emptySubtext}>
@@ -362,6 +362,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
+    paddingBottom: 48,
   },
   emptyContainer: {
     flex: 1,

@@ -1,48 +1,11 @@
-import { useState, useEffect } from "react";
 import supabase from "../lib/supabase";
 import { Alert } from "react-native";
 
-// Custom hook for managing life goals
-export const useLifeGoals = () => {
-  const [lifeGoals, setLifeGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const fetchLifeGoals = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch life goals with completion statistics
-      const { data, error: fetchError } = await supabase.rpc(
-        "get_life_goal_stats"
-      );
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setLifeGoals(data || []);
-    } catch (err) {
-      console.error("Error fetching life goals:", err);
-      setError(err.message || "Failed to fetch life goals");
-      setLifeGoals([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLifeGoals();
-  }, []);
-
-  return {
-    lifeGoals,
-    loading,
-    error,
-    refetch: fetchLifeGoals,
-  };
-};
+/**
+ * This file now contains only mutation functions for life goals.
+ * Query hooks have been moved to src/hooks/queries/useLifeGoalsQueries.js
+ * Mutation hooks have been moved to src/hooks/mutations/useLifeGoalMutations.js
+ */
 
 // Create a new life goal
 export const createLifeGoal = async (name, description) => {

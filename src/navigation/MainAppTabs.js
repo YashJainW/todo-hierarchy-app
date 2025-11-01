@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import DashboardScreen from "../screens/dashboard/DashboardScreen";
+import BacklogScreen from "../screens/backlog/BacklogScreen";
 import StatsScreen from "../screens/stats/StatsScreen";
 import LifeGoalsScreen from "../screens/goals/LifeGoalsScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
@@ -61,6 +62,19 @@ const MainAppTabs = () => {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
               name="view-dashboard"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Backlog"
+        component={BacklogScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="clock-alert-outline"
               size={size}
               color={color}
             />

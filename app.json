@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "todo-hierarchy-app",
+    "name": "Do It",
     "slug": "todo-hierarchy-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#2F1E78"
     },
     "ios": {
       "supportsTablet": true
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2F1E78"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.yashjainw.todohierarchyapp"

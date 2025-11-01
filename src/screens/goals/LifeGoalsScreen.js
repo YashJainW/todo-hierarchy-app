@@ -22,28 +22,33 @@ import {
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
+import { useLifeGoals } from "../../hooks/queries/useLifeGoalsQueries";
 import {
-  useLifeGoals,
-  createLifeGoal,
-  updateLifeGoal,
-  deleteLifeGoal,
-} from "../../hooks/useLifeGoals";
+  useCreateLifeGoalMutation,
+  useUpdateLifeGoalMutation,
+  useDeleteLifeGoalMutation,
+} from "../../hooks/mutations/useLifeGoalMutations";
+import { useGoalTasks } from "../../hooks/queries/useTodosQueries";
 import supabase from "../../lib/supabase";
 import { format } from "date-fns";
 
 const LifeGoalsScreen = () => {
   const navigation = useNavigation();
-  const { lifeGoals, loading, error, refetch } = useLifeGoals();
+  const { data: lifeGoals = [], isLoading, error, refetch } = useLifeGoals();
+  const createGoalMutation = useCreateLifeGoalMutation();
+  const updateGoalMutation = useUpdateLifeGoalMutation();
+  const deleteGoalMutation = useDeleteLifeGoalMutation();
   const isFocused = useIsFocused();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [formLoading, setFormLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedGoalId, setExpandedGoalId] = useState(null);
-  const [goalTasks, setGoalTasks] = useState({});
-  const [loadingTasks, setLoadingTasks] = useState({});
+
+  // Fetch tasks for the expanded goal using React Query
+  const { data: expandedGoalTasks = [], isLoading: isLoadingExpandedTasks } =
+    useGoalTasks(expandedGoalId);
 
   const handleOpenModal = (goal = null) => {
     if (goal) {
@@ -72,7 +77,9 @@ const LifeGoalsScreen = () => {
           activeOpacity={0.9}
           onPress={() => handleOpenModal()}
           style={styles.headerButton}
-          disabled={formLoading}
+          disabled={
+            createGoalMutation.isPending || updateGoalMutation.isPending
+          }
         >
           <LinearGradient
             colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
@@ -88,37 +95,41 @@ const LifeGoalsScreen = () => {
         </TouchableOpacity>
       ),
     });
-  }, [navigation, formLoading]);
+  }, [navigation, createGoalMutation.isPending, updateGoalMutation.isPending]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!name.trim()) {
       Alert.alert("Error", "Please enter a goal name");
       return;
     }
 
-    setFormLoading(true);
-
-    try {
-      let result;
-      if (editingGoal) {
-        result = await updateLifeGoal(editingGoal.id, {
+    if (editingGoal) {
+      updateGoalMutation.mutate(
+        {
+          id: editingGoal.id,
+          updates: {
+            name: name.trim(),
+            description: description.trim() || null,
+          },
+        },
+        {
+          onSuccess: () => {
+            handleCloseModal();
+          },
+        }
+      );
+    } else {
+      createGoalMutation.mutate(
+        {
           name: name.trim(),
-          description: description.trim() || null,
-        });
-      } else {
-        result = await createLifeGoal(name.trim(), description.trim());
-      }
-
-      if (result.error) {
-        Alert.alert("Error", result.error);
-      } else {
-        handleCloseModal();
-        refetch();
-      }
-    } catch (err) {
-      Alert.alert("Error", "An unexpected error occurred");
-    } finally {
-      setFormLoading(false);
+          description: description.trim(),
+        },
+        {
+          onSuccess: () => {
+            handleCloseModal();
+          },
+        }
+      );
     }
   };
 
@@ -129,72 +140,24 @@ const LifeGoalsScreen = () => {
     }
   }, [isFocused]);
 
-  const handleDelete = async (goal) => {
-    // Let deleteLifeGoal handle the Alert with options for children
-    const result = await deleteLifeGoal(goal.id, true);
-    if (result.error) {
-      // Only show error if it's not a cancellation
-      if (result.error !== "Deletion cancelled") {
-        Alert.alert("Error", result.error);
-      }
-    } else {
-      refetch();
-    }
+  const handleDelete = (goal) => {
+    // Use mutation hook - it handles errors and refetching automatically
+    deleteGoalMutation.mutate({ id: goal.id, showAlert: true });
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
-    // Refresh tasks for expanded goal if any
-    if (expandedGoalId) {
-      await fetchGoalTasks(expandedGoalId);
-    }
     setRefreshing(false);
   };
 
-  const fetchGoalTasks = async (goalId) => {
-    if (loadingTasks[goalId]) return; // Already loading
-
-    setLoadingTasks((prev) => ({ ...prev, [goalId]: true }));
-    try {
-      const { data, error } = await supabase
-        .from("todos")
-        .select("id, task_name, state, due_date")
-        .eq("parent_life_goal_id", goalId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      setGoalTasks((prev) => ({
-        ...prev,
-        [goalId]: data || [],
-      }));
-    } catch (err) {
-      console.error("Error fetching goal tasks:", err);
-      setGoalTasks((prev) => ({
-        ...prev,
-        [goalId]: [],
-      }));
-    } finally {
-      setLoadingTasks((prev) => {
-        const next = { ...prev };
-        delete next[goalId];
-        return next;
-      });
-    }
-  };
-
-  const handleCardPress = async (goal) => {
+  const handleCardPress = (goal) => {
     if (expandedGoalId === goal.id) {
       // Collapse
       setExpandedGoalId(null);
     } else {
-      // Expand
+      // Expand - React Query will fetch tasks automatically
       setExpandedGoalId(goal.id);
-      // Fetch tasks if not already loaded
-      if (!goalTasks[goal.id]) {
-        await fetchGoalTasks(goal.id);
-      }
     }
   };
 
@@ -243,8 +206,10 @@ const LifeGoalsScreen = () => {
   const renderGoalItemFull = ({ item }) => {
     const completionPercentage = item.completion_percentage || 0;
     const isExpanded = expandedGoalId === item.id;
-    const tasks = goalTasks[item.id] || [];
-    const isLoadingTasks = loadingTasks[item.id] || false;
+
+    // Use the tasks from the top-level hook if this goal is expanded
+    const tasks = isExpanded ? expandedGoalTasks : [];
+    const isLoadingTasks = isExpanded ? isLoadingExpandedTasks : false;
 
     // Get gradient colors based on completion percentage
     const getCardGradient = () => {
@@ -307,7 +272,9 @@ const LifeGoalsScreen = () => {
                     e?.stopPropagation?.();
                     handleOpenModal(item);
                   }}
-                  disabled={formLoading}
+                  disabled={
+                    createGoalMutation.isPending || updateGoalMutation.isPending
+                  }
                   iconColor="#ffffff"
                   style={styles.iconButton}
                 />
@@ -318,7 +285,9 @@ const LifeGoalsScreen = () => {
                     e?.stopPropagation?.();
                     handleDelete(item);
                   }}
-                  disabled={formLoading}
+                  disabled={
+                    createGoalMutation.isPending || updateGoalMutation.isPending
+                  }
                   iconColor="#ffffff"
                   style={styles.iconButton}
                 />
@@ -397,7 +366,7 @@ const LifeGoalsScreen = () => {
     );
   };
 
-  if (loading && lifeGoals.length === 0) {
+  if (isLoading && lifeGoals.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centerContainer}>
@@ -427,7 +396,7 @@ const LifeGoalsScreen = () => {
           lifeGoals.length === 0 ? styles.emptyContainer : styles.listContainer
         }
         ListEmptyComponent={
-          !loading ? (
+          !isLoading ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No life goals yet</Text>
               <Text style={styles.emptySubtext}>
@@ -461,7 +430,9 @@ const LifeGoalsScreen = () => {
             onChangeText={setName}
             mode="outlined"
             style={styles.input}
-            disabled={formLoading}
+            disabled={
+              createGoalMutation.isPending || updateGoalMutation.isPending
+            }
             autoFocus
           />
           <TextInput
@@ -472,18 +443,31 @@ const LifeGoalsScreen = () => {
             multiline
             numberOfLines={4}
             style={styles.input}
-            disabled={formLoading}
+            disabled={
+              createGoalMutation.isPending || updateGoalMutation.isPending
+            }
           />
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={handleCloseModal} disabled={formLoading}>
+          <Button
+            onPress={handleCloseModal}
+            disabled={
+              createGoalMutation.isPending || updateGoalMutation.isPending
+            }
+          >
             Cancel
           </Button>
           <Button
             onPress={handleSave}
             mode="contained"
-            loading={formLoading}
-            disabled={formLoading || !name.trim()}
+            loading={
+              createGoalMutation.isPending || updateGoalMutation.isPending
+            }
+            disabled={
+              createGoalMutation.isPending ||
+              updateGoalMutation.isPending ||
+              !name.trim()
+            }
           >
             {editingGoal ? "Update" : "Create"}
           </Button>
@@ -663,6 +647,7 @@ const styles = StyleSheet.create({
     color: "#999",
     fontStyle: "italic",
     marginTop: 8,
+    marginBottom: 12,
   },
   dialogTitleContainer: {
     backgroundColor: "transparent",

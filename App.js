@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Text as RNText,
   TextInput as RNTextInput,
@@ -15,7 +15,9 @@ import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setupGlobalFonts } from "./src/utils/fontSetup";
+import { logger } from "./src/utils/logger";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import MainAppTabs from "./src/navigation/MainAppTabs";
 import AuthStack from "./src/navigation/AuthStack";
@@ -23,9 +25,37 @@ import AuthStack from "./src/navigation/AuthStack";
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
+// Create QueryClient instance with default configuration
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes - data is fresh for 5 min
+      gcTime: 1000 * 60 * 30, // 30 minutes - cache time (formerly cacheTime)
+      retry: 2, // Retry failed requests twice
+      refetchOnWindowFocus: false, // Don't refetch on window focus (mobile app)
+      refetchOnReconnect: true, // Refetch when reconnecting
+    },
+    mutations: {
+      retry: 1, // Retry failed mutations once
+    },
+  },
+});
+
+logger.log("[App] QueryClient initialized:", {
+  staleTime: "5 minutes",
+  gcTime: "30 minutes",
+  queryRetry: 2,
+  mutationRetry: 1,
+});
+
 // Custom theme with Quicksand font
 const createTheme = (fontsLoaded) => {
-  if (!fontsLoaded) return DefaultTheme;
+  if (!fontsLoaded) {
+    logger.warn(
+      "[App] Creating theme without fonts loaded, using DefaultTheme"
+    );
+    return DefaultTheme;
+  }
 
   // React Native Paper requires platform-specific font configuration
   const fontConfig = {
@@ -99,7 +129,7 @@ const createTheme = (fontsLoaded) => {
     };
   };
 
-  return {
+  const theme = {
     ...DefaultTheme,
     isV3: false, // Explicitly set Material Design 2
     fonts: {
@@ -135,43 +165,104 @@ const createTheme = (fontsLoaded) => {
       backdrop: "#00000080",
     },
   };
+
+  // Log theme creation
+  if (fontsLoaded) {
+    logger.log("[App] Theme created successfully:", {
+      hasFonts: true,
+      primaryColor: "#6200ee",
+    });
+  }
+
+  return theme;
 };
 
 // RootNavigator component
 const RootNavigator = () => {
-  const { session, loading } = useAuth();
+  const { session } = useAuth();
 
-  useEffect(() => {
-    if (!loading) {
-      // Hide splash screen when loading is complete
-      SplashScreen.hideAsync();
-    }
-  }, [loading]);
-
-  // Show loader while checking auth state
-  if (loading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#f5f5f5",
-        }}
-      >
-        <ActivityIndicator size="large" color="#6200ee" />
-      </View>
-    );
-  }
+  // Log navigation state changes
+  React.useEffect(() => {
+    logger.log("[App] Navigation state changed:", {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      route: session ? "MainAppTabs" : "AuthStack",
+    });
+  }, [session]);
 
   // Conditionally render MainAppTabs or AuthStack based on session
   return session ? <MainAppTabs /> : <AuthStack />;
 };
 
+// Inner app component that has access to AuthProvider
+const AppContent = ({ fontsLoaded, theme }) => {
+  const { loading: authLoading } = useAuth();
+  const [isReady, setIsReady] = React.useState(false);
+
+  useEffect(() => {
+    const prepareApp = async () => {
+      if (fontsLoaded && !authLoading) {
+        logger.log("[App] Preparing app:", {
+          fontsLoaded: true,
+          authLoading: false,
+        });
+
+        // Setup global fonts for Text and TextInput components
+        try {
+          setupGlobalFonts();
+          logger.log("[App] Global fonts setup completed");
+        } catch (error) {
+          logger.error("[App] Failed to setup global fonts:", {
+            message: error.message,
+            stack: error.stack,
+          });
+        }
+
+        // Minimum delay to ensure splash screen is visible
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Hide splash screen only after both fonts and auth are loaded
+        try {
+          await SplashScreen.hideAsync();
+          logger.log("[App] Splash screen hidden successfully");
+          setIsReady(true);
+        } catch (error) {
+          logger.error("[App] Failed to hide splash screen:", {
+            message: error.message,
+            stack: error.stack,
+          });
+          setIsReady(true);
+        }
+      } else {
+        logger.debug("[App] Waiting for app initialization:", {
+          fontsLoaded,
+          authLoading,
+        });
+      }
+    };
+
+    prepareApp();
+  }, [fontsLoaded, authLoading, theme]);
+
+  // Render a View with splash background color while loading to ensure visibility
+  if (!isReady) {
+    return <View style={{ flex: 1, backgroundColor: "#2F1E78" }} />;
+  }
+
+  return (
+    <NavigationContainer>
+      <RootNavigator />
+      <StatusBar style="auto" />
+    </NavigationContainer>
+  );
+};
+
 // App component
 export default function App() {
+  logger.log("[App] App component initialized");
+
   // Load Quicksand font files
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     "Quicksand-Light": require("./assets/fonts/Quicksand-Light.ttf"),
     "Quicksand-Regular": require("./assets/fonts/Quicksand-Regular.ttf"),
     "Quicksand-Medium": require("./assets/fonts/Quicksand-Medium.ttf"),
@@ -179,44 +270,43 @@ export default function App() {
     "Quicksand-Bold": require("./assets/fonts/Quicksand-Bold.ttf"),
   });
 
+  // Log font loading status
+  React.useEffect(() => {
+    if (fontError) {
+      logger.error("[App] Font loading failed:", {
+        message: fontError.message,
+        stack: fontError.stack,
+      });
+    } else if (fontsLoaded) {
+      logger.log("[App] All fonts loaded successfully:", {
+        fonts: [
+          "Quicksand-Light",
+          "Quicksand-Regular",
+          "Quicksand-Medium",
+          "Quicksand-SemiBold",
+          "Quicksand-Bold",
+        ],
+      });
+    }
+  }, [fontsLoaded, fontError]);
+
   // Create theme - always call this, even if fonts not loaded (for hooks consistency)
   const theme = createTheme(fontsLoaded);
 
-  useEffect(() => {
-    if (fontsLoaded) {
-      console.log("✅ Quicksand fonts loaded successfully!");
-
-      // Setup global fonts for Text and TextInput components
-      setupGlobalFonts();
-
-      // Debug: Log theme configuration
-      if (theme.fonts) {
-        console.log("✅ Theme configured with Quicksand fonts");
-        console.log("   Regular font:", theme.fonts.regular);
-        console.log("   MD3 variant (bodySmall):", theme.fonts.bodySmall);
-        console.log("   MD3 variant (labelLarge):", theme.fonts.labelLarge);
-      }
-
-      SplashScreen.hideAsync();
-    } else {
-      console.log("⏳ Loading Quicksand fonts...");
-    }
-  }, [fontsLoaded, theme]);
-
+  // Show splash screen while fonts are loading
   if (!fontsLoaded) {
     return null;
   }
 
   return (
     <SafeAreaProvider>
-      <PaperProvider theme={theme}>
-        <AuthProvider>
-          <NavigationContainer>
-            <RootNavigator />
-            <StatusBar style="auto" />
-          </NavigationContainer>
-        </AuthProvider>
-      </PaperProvider>
+      <QueryClientProvider client={queryClient}>
+        <PaperProvider theme={theme}>
+          <AuthProvider>
+            <AppContent fontsLoaded={fontsLoaded} theme={theme} />
+          </AuthProvider>
+        </PaperProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
