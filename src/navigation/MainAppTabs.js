@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import DashboardScreen from "../screens/dashboard/DashboardScreen";
@@ -8,10 +9,12 @@ import BacklogScreen from "../screens/backlog/BacklogScreen";
 import StatsScreen from "../screens/stats/StatsScreen";
 import LifeGoalsScreen from "../screens/goals/LifeGoalsScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
+import TaskHistoryScreen from "../screens/history/TaskHistoryScreen";
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
-const MainAppTabs = () => {
+const MainAppTabsContent = () => {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -117,6 +120,25 @@ const MainAppTabs = () => {
         }}
       />
     </Tab.Navigator>
+  );
+};
+
+const MainAppTabs = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="MainTabs" component={MainAppTabsContent} />
+      <Stack.Screen
+        name="TaskHistory"
+        component={TaskHistoryScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+    </Stack.Navigator>
   );
 };
 

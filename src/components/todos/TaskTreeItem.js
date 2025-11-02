@@ -113,6 +113,9 @@ const TaskTreeNode = ({
   };
 
   const formattedDate = formatDate(task.due_date);
+  const formattedCompletedDate = isCompleted && task.completed_at 
+    ? formatDate(task.completed_at) 
+    : null;
 
   const taskTypeColors = {
     yearly: "#9C27B0",
@@ -246,7 +249,12 @@ const TaskTreeNode = ({
                   </Text>
                 </View>
                 {formattedDate && (
-                  <Text style={styles.metadataText}>{formattedDate}</Text>
+                  <Text style={styles.metadataText}>Due: {formattedDate}</Text>
+                )}
+                {formattedCompletedDate && (
+                  <Text style={[styles.metadataText, styles.completedDateText]}>
+                    Completed: {formattedCompletedDate}
+                  </Text>
                 )}
                 {isLeafTask && hasParent && (
                   <IconButton
@@ -503,6 +511,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Quicksand-Regular",
     color: "#666",
+    marginRight: 8,
+  },
+  completedDateText: {
+    color: "#4CAF50",
+    fontWeight: "600",
     marginRight: 8,
   },
   progressText: {

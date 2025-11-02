@@ -1,7 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet } from "react-native";
-import { Text, Divider } from "react-native-paper";
+import { Divider } from "react-native-paper";
 import TaskTreeNode from "./TaskTreeItem";
+
+/**
+ * Helper function to recursively collect all task IDs from a task tree
+ */
+const getAllTaskIds = (task) => {
+  const ids = new Set();
+
+  const collectIds = (node) => {
+    if (!node || !node.id) return;
+    ids.add(node.id);
+
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((child) => {
+        collectIds(child);
+      });
+    }
+  };
+
+  collectIds(task);
+  return ids;
+};
 
 /**
  * Component to display a task group (root task with its tree)
@@ -14,13 +35,22 @@ const TaskGroup = ({
   menuVisible,
   onMenuToggle,
   getPriorityColor,
+  expandAllByDefault = false,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false); // Not used now but kept for future
   const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+
   // Track which tasks should be expanded (for showing full path to leaf)
   const [expandedTaskIds, setExpandedTaskIds] = useState(new Set());
   // Track if a leaf is currently selected to toggle collapse on second tap
   const [selectedLeafId, setSelectedLeafId] = useState(null);
+
+  // Update expandedTaskIds when rootTask changes (e.g., when expandAllByDefault is true)
+  useEffect(() => {
+    if (expandAllByDefault && rootTask) {
+      const allIds = getAllTaskIds(rootTask);
+      setExpandedTaskIds(allIds);
+    }
+  }, [expandAllByDefault, rootTask?.id]);
 
   // Defensive check for missing rootTask
   if (!rootTask || !rootTask.id) {
@@ -74,36 +104,26 @@ const TaskGroup = ({
 
   return (
     <View style={styles.groupContainer}>
-      {!isCollapsed && (
-        <View style={styles.treeContainer}>
-          {/* Table Header */}
-          {/* <View style={styles.tableHeader}>
-            <View style={styles.headerCheckboxColumn} />
-            <View style={styles.headerTaskColumn}>
-              <Text style={styles.headerText}>Task</Text>
-            </View>
-            <View style={styles.headerActionsColumn} />
-          </View> */}
-          <Divider />
-          {/* Task Tree */}
-          {/* Render root and all leaf tasks */}
-          <TaskTreeNode
-            task={rootTask}
-            level={0}
-            onToggleComplete={onToggleComplete}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            menuVisible={menuVisible}
-            onMenuToggle={onMenuToggle}
-            getPriorityColor={getPriorityColor}
-            highlightedTaskId={highlightedTaskId}
-            onExpandGroup={handleExpandGroup}
-            expandedTaskIds={expandedTaskIds}
-            parentExpanded={true} // Root is always expanded for visibility
-            selectedLeafId={selectedLeafId}
-          />
-        </View>
-      )}
+      <View style={styles.treeContainer}>
+        <Divider />
+        {/* Task Tree */}
+        {/* Render root and all leaf tasks */}
+        <TaskTreeNode
+          task={rootTask}
+          level={0}
+          onToggleComplete={onToggleComplete}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          menuVisible={menuVisible}
+          onMenuToggle={onMenuToggle}
+          getPriorityColor={getPriorityColor}
+          highlightedTaskId={highlightedTaskId}
+          onExpandGroup={handleExpandGroup}
+          expandedTaskIds={expandedTaskIds}
+          parentExpanded={true} // Root is always expanded for visibility
+          selectedLeafId={selectedLeafId}
+        />
+      </View>
     </View>
   );
 };
@@ -119,32 +139,6 @@ const styles = StyleSheet.create({
   },
   treeContainer: {
     backgroundColor: "#fff",
-  },
-  tableHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fafafa",
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-  },
-  headerCheckboxColumn: {
-    width: 48,
-  },
-  headerTaskColumn: {
-    flex: 1,
-    paddingLeft: 8,
-  },
-  headerText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#666",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  headerActionsColumn: {
-    width: 48,
   },
 });
 
