@@ -214,12 +214,55 @@ echo $ANDROID_HOME
 adb version
 ```
 
-## Step 7: Run Local Build
+## Step 7: Prepare Project for Build (Important for WSL)
+
+**Important**: If your project is on a Windows-mounted drive (`/mnt/d/...`), EAS may have issues copying files. Copy the project to a Linux-native directory first:
+
+```bash
+# Option 1: Copy to Linux-native directory (Recommended)
+# Create a projects directory in your home folder
+mkdir -p ~/projects
+cd ~/projects
+
+# Copy your project INCLUDING .git directory (EAS needs git to copy files)
+# Excluding large directories for faster copy
+rsync -av --exclude='node_modules' --exclude='.expo' --exclude='builds' \
+  /mnt/d/yash/git_projects/todo-hierarchy-app/ ./todo-hierarchy-app/
+
+# Navigate to the copied project
+cd ~/projects/todo-hierarchy-app
+
+# Verify .git directory exists (important for EAS)
+if [ ! -d .git ]; then
+  echo "Warning: .git directory not found. Initializing git repository..."
+  git init
+  git add .
+  git commit -m "Initial commit for EAS build"
+fi
+
+# Verify essential files exist
+ls -la package.json app.json eas.json
+
+# Install dependencies
+npm install
+```
+
+Or use the Windows-mounted path if it works:
+
+```bash
+# Option 2: Use Windows-mounted path (may have issues)
+cd /mnt/d/yash/git_projects/todo-hierarchy-app
+```
+
+## Step 8: Run Local Build
 
 Navigate to your project directory and run the build:
 
 ```bash
-# Navigate to your project (adjust path if needed)
+# If using Linux-native path (recommended)
+cd ~/projects/todo-hierarchy-app
+
+# OR if using Windows-mounted path
 cd /mnt/d/yash/git_projects/todo-hierarchy-app
 
 # Run local build with output directory
@@ -231,9 +274,9 @@ eas build --platform android --profile internal --local --output ./builds
 - `--platform android`: Build for Android
 - `--profile internal`: Use the "internal" build profile (defined in `eas.json`)
 - `--local`: Build locally instead of on EAS servers
-- `--output ./build-output`: Specify output directory for the AAB file
+- `--output ./builds`: Specify output directory for the AAB file
 
-The AAB file will be saved in the `./build-output` directory.
+The AAB file will be saved in the `./builds` directory.
 
 ## Troubleshooting
 
@@ -264,6 +307,101 @@ The AAB file will be saved in the `./build-output` directory.
 
 - Use the npm global directory configuration from Step 2
 - Or use `npx` instead of global installs
+
+### Error: "package.json does not exist in /tmp/.../build"
+
+This error occurs when EAS can't properly copy files to its temporary build directory. **Solution: Ensure project is a git repository and copy properly**
+
+**Fix 1: Copy project with git repository (Recommended)**
+
+```bash
+# Create a Linux-native directory
+mkdir -p ~/projects
+cd ~/projects
+
+# Copy your project INCLUDING .git directory (important for EAS)
+rsync -av --exclude='node_modules' --exclude='.expo' --exclude='builds' \
+  /mnt/d/yash/git_projects/todo-hierarchy-app/ ./todo-hierarchy-app/
+
+# Navigate to copied project
+cd ~/projects/todo-hierarchy-app
+
+# Verify .git directory exists
+ls -la .git
+
+# If .git doesn't exist, initialize git repository
+if [ ! -d .git ]; then
+  git init
+  git add .
+  git commit -m "Initial commit for EAS build"
+fi
+
+# Install dependencies
+npm install
+
+# Run build from Linux-native path
+eas build --platform android --profile internal --local --output ./builds
+```
+
+**Fix 2: If git repository is not available, ensure all files are present**
+
+```bash
+# Navigate to your project
+cd ~/projects/todo-hierarchy-app
+
+# Verify essential files exist
+ls -la package.json app.json eas.json index.js App.js
+
+# If any files are missing, copy them from original location
+# Then ensure npm install has run
+npm install
+
+# Try building again
+eas build --platform android --profile internal --local --output ./builds
+```
+
+**Fix 3: Clean EAS cache and try again**
+
+```bash
+# Navigate to project
+cd ~/projects/todo-hierarchy-app
+
+# Clean EAS build cache
+rm -rf /tmp/yash/eas-build-local-nodejs
+
+# Verify you're in the correct directory
+pwd
+
+# Verify package.json exists
+test -f package.json && echo "package.json exists" || echo "package.json MISSING"
+
+# Run build again
+eas build --platform android --profile internal --local --output ./builds
+```
+
+**Fix 4: Use git archive method (if rsync doesn't work)**
+
+```bash
+# From original project location
+cd /mnt/d/yash/git_projects/todo-hierarchy-app
+
+# Create archive of all tracked files
+git archive --format=tar.gz --output=/tmp/project.tar.gz HEAD
+
+# Extract in Linux-native location
+cd ~/projects
+mkdir -p todo-hierarchy-app
+cd todo-hierarchy-app
+tar -xzf /tmp/project.tar.gz
+
+# Install dependencies
+npm install
+
+# Run build
+eas build --platform android --profile internal --local --output ./builds
+```
+
+**Note**: EAS uses git to determine which files to copy. If your project isn't a git repository, initialize it first.
 
 ## Quick Reference
 
