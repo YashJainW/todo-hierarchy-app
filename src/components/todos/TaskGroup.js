@@ -36,6 +36,8 @@ const TaskGroup = ({
   onMenuToggle,
   getPriorityColor,
   expandAllByDefault = false,
+  showEditOption = true,
+  showDeleteOption = true,
 }) => {
   const [highlightedTaskId, setHighlightedTaskId] = useState(null);
 
@@ -122,6 +124,8 @@ const TaskGroup = ({
           expandedTaskIds={expandedTaskIds}
           parentExpanded={true} // Root is always expanded for visibility
           selectedLeafId={selectedLeafId}
+          showEditOption={showEditOption}
+          showDeleteOption={showDeleteOption}
         />
       </View>
     </View>

@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useDashboardTasks } from "../../hooks/queries/useTodosQueries";
 import { useUpdateTodoMutation } from "../../hooks/mutations/useTodoMutations";
+import { useDeleteTodoMutation } from "../../hooks/mutations/useTodoMutations";
 import TaskGroup from "../../components/todos/TaskGroup";
 import { buildTaskTree } from "../../utils/taskHierarchy";
 import { startOfDay, isBefore, format } from "date-fns";
@@ -23,8 +24,12 @@ const TaskHistoryScreen = () => {
   const navigation = useNavigation();
   const { data: tasks = [], isLoading, error, refetch } = useDashboardTasks();
   const updateTodoMutation = useUpdateTodoMutation();
+  const deleteTodoMutation = useDeleteTodoMutation();
+  const [menuVisible, setMenuVisible] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [visibleDaysCount, setVisibleDaysCount] = useState(5); // Initial days to show (5 days)
+  const [confirmClearVisible, setConfirmClearVisible] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Get today's date (at start of day for comparison)
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -210,11 +215,15 @@ const TaskHistoryScreen = () => {
   };
 
   const handleEdit = () => {
-    // No-op for history (read-only)
+    // No edit in history
   };
 
-  const handleDelete = () => {
-    // No-op for history (read-only)
+  const handleDelete = (todo) => {
+    deleteTodoMutation.mutate({ id: todo.id, showAlert: true });
+  };
+
+  const handleMenuToggle = (taskId, visible) => {
+    setMenuVisible((prev) => ({ ...prev, [taskId]: visible }));
   };
 
   const getPriorityColor = (priority) => {
@@ -247,10 +256,12 @@ const TaskHistoryScreen = () => {
             onToggleComplete={handleToggleComplete}
             onEdit={handleEdit}
             onDelete={handleDelete}
-            menuVisible={{}}
-            onMenuToggle={() => {}}
+            menuVisible={menuVisible}
+            onMenuToggle={handleMenuToggle}
             getPriorityColor={getPriorityColor}
             expandAllByDefault={true}
+            showEditOption={false}
+            showDeleteOption={true}
           />
         ))}
       </View>
@@ -278,6 +289,192 @@ const TaskHistoryScreen = () => {
           <View style={styles.headerSpacer} />
         </View>
       </LinearGradient>
+
+      {/* Clear Completed Button under header */}
+      <View style={styles.clearBar}>
+        <TouchableOpacity
+          onPress={() => {
+            // Placeholder – functionality will be implemented in a future feature
+            logger.debug("Clear All Completed Tasks pressed");
+            setConfirmClearVisible(true);
+          }}
+          activeOpacity={0.7}
+          style={styles.clearButton}
+        >
+          <Text style={styles.clearButtonText}>Clear All Completed Tasks</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Confirmation Modal */}
+      {confirmClearVisible && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Delete completed task groups?</Text>
+            <Text style={styles.modalSubtitle}>
+              This will delete all task groups where every task is completed.
+              Groups containing any incomplete task will be kept.
+            </Text>
+            {isClearing && (
+              <View style={styles.modalLoadingRow}>
+                <ActivityIndicator size="small" color="#6200ee" />
+                <Text style={styles.modalLoadingText}>Deleting...</Text>
+              </View>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setConfirmClearVisible(false)}
+                style={[styles.modalButton, styles.modalCancelButton]}
+                activeOpacity={0.8}
+                disabled={isClearing}
+              >
+                <Text style={[styles.modalButtonText, styles.modalCancelText]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    setIsClearing(true);
+                    // Verify completeness against FULL dataset with normalized string IDs
+                    const toId = (val) =>
+                      val !== null && val !== undefined ? String(val) : null;
+                    const idToTask = new Map();
+                    const idToChildren = new Map();
+                    const idToParent = new Map();
+                    (tasks || []).forEach((t) => {
+                      const idStr = toId(t?.id);
+                      if (!idStr) return;
+                      idToTask.set(idStr, t);
+                      idToChildren.set(idStr, []);
+                    });
+                    (tasks || []).forEach((t) => {
+                      const idStr = toId(t?.id);
+                      const parentStr =
+                        toId(t?.parent_id) || toId(t?.parent_todo_id);
+                      if (!idStr || !parentStr) return;
+                      if (!idToChildren.has(parentStr))
+                        idToChildren.set(parentStr, []);
+                      idToChildren.get(parentStr).push(idStr);
+                      idToParent.set(idStr, parentStr);
+                    });
+
+                    const areAllLeafDescendantsCompleted = (rootIdRaw) => {
+                      const rootId = toId(rootIdRaw);
+                      if (!rootId || !idToTask.has(rootId)) return false;
+                      const stack = [rootId];
+                      while (stack.length > 0) {
+                        const currentId = stack.pop();
+                        const children = idToChildren.get(currentId) || [];
+                        if (children.length === 0) {
+                          const leafTask = idToTask.get(currentId);
+                          if (!leafTask || leafTask.state !== "completed")
+                            return false;
+                        } else {
+                          for (const childId of children) stack.push(childId);
+                        }
+                      }
+                      return true;
+                    };
+
+                    // Collect ALL completed overdue tasks as candidates (not just roots from history)
+                    // This ensures intermediate parents (monthly/weekly) are also considered
+                    const candidateTaskIds = new Set();
+                    (tasks || []).forEach((t) => {
+                      if (t.state !== "completed" || !t.due_date) return;
+                      const due = startOfDay(new Date(t.due_date));
+                      if (isBefore(due, today)) {
+                        const idStr = toId(t?.id);
+                        if (idStr) candidateTaskIds.add(idStr);
+                      }
+                    });
+
+                    // Mark all candidates whose leaf descendants are completed
+                    const completedCandidateIds = new Set(
+                      Array.from(candidateTaskIds).filter((rootId) =>
+                        areAllLeafDescendantsCompleted(rootId)
+                      )
+                    );
+
+                    // Keep only TOP-MOST completed nodes (no ancestor in the set)
+                    const hasAncestorInSet = (idStr, set) => {
+                      let current = idToParent.get(idStr);
+                      while (current) {
+                        if (set.has(current)) return true;
+                        current = idToParent.get(current);
+                      }
+                      return false;
+                    };
+                    const fullyCompletedRootIds = Array.from(
+                      completedCandidateIds
+                    ).filter(
+                      (idStr) => !hasAncestorInSet(idStr, completedCandidateIds)
+                    );
+
+                    logger.debug(
+                      "Fully completed roots (verified against full tree with normalized ids)",
+                      { count: fullyCompletedRootIds.length }
+                    );
+
+                    // Collect all descendants of fully completed roots to delete them all
+                    const getAllDescendantIds = (rootIdStr) => {
+                      const descendantIds = new Set([rootIdStr]);
+                      const stack = [rootIdStr];
+                      while (stack.length > 0) {
+                        const currentId = stack.pop();
+                        const children = idToChildren.get(currentId) || [];
+                        children.forEach((childId) => {
+                          descendantIds.add(childId);
+                          stack.push(childId);
+                        });
+                      }
+                      return Array.from(descendantIds);
+                    };
+
+                    // Get all task IDs to delete (roots + all their descendants)
+                    const allTaskIdsToDelete = new Set();
+                    fullyCompletedRootIds.forEach((rootIdStr) => {
+                      const descendantIds = getAllDescendantIds(rootIdStr);
+                      descendantIds.forEach((id) => allTaskIdsToDelete.add(id));
+                    });
+
+                    logger.debug("Tasks to delete (roots + descendants)", {
+                      rootCount: fullyCompletedRootIds.length,
+                      totalTaskCount: allTaskIdsToDelete.size,
+                    });
+
+                    const deletionPromises = Array.from(allTaskIdsToDelete).map(
+                      (idStr) => {
+                        const originalId = idToTask.get(idStr)?.id ?? idStr;
+                        return deleteTodoMutation
+                          .mutateAsync({ id: originalId, showAlert: false })
+                          .catch((e) => {
+                            logger.error("Failed to delete task", {
+                              id: idStr,
+                              message: e?.message,
+                            });
+                          });
+                      }
+                    );
+                    await Promise.allSettled(deletionPromises);
+                  } finally {
+                    setIsClearing(false);
+                    setConfirmClearVisible(false);
+                  }
+                }}
+                style={[styles.modalButton, styles.modalDeleteButton]}
+                activeOpacity={0.8}
+                disabled={isClearing}
+              >
+                {isClearing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Content */}
       {isLoading ? (
@@ -374,6 +571,93 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
+  },
+  clearBar: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#F5F5F5",
+  },
+  clearButton: {
+    backgroundColor: "#3B1CB0",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: "Quicksand-SemiBold",
+    textAlign: "center",
+  },
+  modalOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10000,
+    elevation: 10000,
+    pointerEvents: "auto",
+  },
+  modalContainer: {
+    width: "88%",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Quicksand-Bold",
+    color: "#000",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontFamily: "Quicksand-Regular",
+    color: "#666",
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 8,
+  },
+  modalLoadingText: {
+    fontSize: 14,
+    fontFamily: "Quicksand-Regular",
+    color: "#6200ee",
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  modalCancelButton: {
+    backgroundColor: "#EEEEEE",
+  },
+  modalDeleteButton: {
+    backgroundColor: "#B00020",
+  },
+  modalButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "Quicksand-SemiBold",
+  },
+  modalCancelText: {
+    color: "#333333",
   },
   content: {
     flex: 1,

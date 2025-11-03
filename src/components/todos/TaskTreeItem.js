@@ -29,6 +29,8 @@ const TaskTreeNode = ({
   expandedTaskIds = new Set(),
   parentExpanded = true, // Whether parent is expanded (for rendering children)
   selectedLeafId = null, // Currently selected leaf (for persistent highlight)
+  showEditOption = true,
+  showDeleteOption = true,
 }) => {
   // Check if this is a leaf task (no children)
   const hasChildren = task.children && task.children.length > 0;
@@ -313,23 +315,27 @@ const TaskTreeNode = ({
               onDismiss={() => onMenuToggle(task.id, false)}
               anchor={<View style={styles.menuAnchor} />}
             >
-              <Menu.Item
-                onPress={() => {
-                  onMenuToggle(task.id, false);
-                  onEdit(task);
-                }}
-                title="Edit"
-                leadingIcon="pencil"
-              />
-              <Menu.Item
-                onPress={() => {
-                  onMenuToggle(task.id, false);
-                  onDelete(task);
-                }}
-                title="Delete"
-                leadingIcon="delete"
-                titleStyle={{ color: "#B00020" }}
-              />
+              {showEditOption && (
+                <Menu.Item
+                  onPress={() => {
+                    onMenuToggle(task.id, false);
+                    onEdit(task);
+                  }}
+                  title="Edit"
+                  leadingIcon="pencil"
+                />
+              )}
+              {showDeleteOption && (
+                <Menu.Item
+                  onPress={() => {
+                    onMenuToggle(task.id, false);
+                    onDelete(task);
+                  }}
+                  title="Delete"
+                  leadingIcon="delete"
+                  titleStyle={{ color: "#B00020" }}
+                />
+              )}
             </Menu>
           </View>
         </View>
@@ -360,6 +366,8 @@ const TaskTreeNode = ({
                   expandedTaskIds={expandedTaskIds}
                   parentExpanded={expanded || expandedTaskIds.has(task.id)}
                   selectedLeafId={selectedLeafId}
+                  showEditOption={showEditOption}
+                  showDeleteOption={showDeleteOption}
                 />
               );
             })}
