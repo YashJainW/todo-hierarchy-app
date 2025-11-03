@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import supabase from "../lib/supabase";
 import { logger, setLoggingUserId, flushLogs } from "../utils/logger";
+// Removed client-side auto deletion trigger; handled by server cron
 
 // Create AuthContext
 const AuthContext = createContext(undefined);
@@ -42,6 +43,7 @@ export const AuthProvider = ({ children }) => {
               },
               initialSession.user?.id
             );
+            // Auto-deletion is scheduled server-side via cron
           } else {
             // Clear user ID if no session
             setLoggingUserId(null);
@@ -80,6 +82,7 @@ export const AuthProvider = ({ children }) => {
         );
         setSession(session);
         setLoading(false);
+        // Auto-deletion is scheduled server-side via cron
       }
     });
 

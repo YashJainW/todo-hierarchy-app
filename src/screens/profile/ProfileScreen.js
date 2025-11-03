@@ -8,6 +8,7 @@ import {
   Divider,
   List,
   ActivityIndicator,
+  Switch,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
@@ -35,6 +36,11 @@ const ProfileScreen = () => {
   const [passwordError, setPasswordError] = useState(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+
+  // Auto-deletion settings
+  const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(false);
+  const [autoDeleteDays, setAutoDeleteDays] = useState("30");
+  const MAX_DAYS = 365;
 
   // Statistics state
   const [stats, setStats] = useState({
@@ -90,6 +96,13 @@ const ProfileScreen = () => {
         setInitialUsername(fetchedUsername);
         setInitialFullName(fetchedFullName);
       }
+
+      // Load auto-delete settings from user metadata
+      const meta = user?.user_metadata || {};
+      const enabled = Boolean(meta.autoDeleteEnabled);
+      const daysVal = Number(meta.autoDeleteDays) || 30;
+      setAutoDeleteEnabled(enabled);
+      setAutoDeleteDays(String(Math.min(daysVal, MAX_DAYS)));
     } catch (error) {
       console.error("Error fetching profile:", error);
       // Fallback to user metadata
@@ -165,9 +178,15 @@ const ProfileScreen = () => {
       }
 
       // Also update user metadata
+      let daysNum = Number(autoDeleteDays) || 0;
+      if (daysNum < 0) daysNum = 0;
+      if (daysNum > MAX_DAYS) daysNum = MAX_DAYS;
+
       const result = await updateProfile({
         username: username.trim(),
         full_name: fullName.trim() || null,
+        autoDeleteEnabled: autoDeleteEnabled,
+        autoDeleteDays: daysNum,
       });
 
       if (result.error) {
@@ -373,6 +392,53 @@ const ProfileScreen = () => {
         </Card>
 
         <Divider style={styles.divider} />
+
+      {/* Auto Deletion Settings */}
+      <Card style={styles.card} mode="elevated" elevation={2}>
+        <LinearGradient
+          colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.gradientHeader}
+        >
+          <Text style={styles.gradientTitle}>Auto Delete Completed Todos</Text>
+        </LinearGradient>
+        <Card.Content style={styles.cardContent}>
+          <List.Item
+            title="Enable Auto Deletion"
+            description="Delete completed todo trees older than the configured days"
+            right={() => (
+              <Switch value={autoDeleteEnabled} onValueChange={setAutoDeleteEnabled} />
+            )}
+            style={styles.statItem}
+            titleStyle={styles.listItemTitle}
+            descriptionStyle={styles.listItemDescription}
+          />
+          <Divider style={styles.divider} />
+          <TextInput
+            label="Delete items older than (days)"
+            mode="outlined"
+            keyboardType="numeric"
+            value={autoDeleteDays}
+            onChangeText={(t) => setAutoDeleteDays(t.replace(/[^0-9]/g, ""))}
+            right={<TextInput.Affix text="days" />}
+            style={styles.input}
+            disabled={!autoDeleteEnabled}
+          />
+          <Text style={styles.warningText}>
+            Maximum retention is 365 days. Items older than 1 year are deleted automatically.
+          </Text>
+          <Button
+            mode="contained"
+            onPress={handleProfileUpdate}
+            style={styles.updateButton}
+            loading={saving}
+            disabled={saving}
+          >
+            Save Settings
+          </Button>
+        </Card.Content>
+      </Card>
 
         {/* Password Change Section */}
         <Card style={styles.card} mode="elevated" elevation={2}>
