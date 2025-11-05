@@ -19,7 +19,7 @@ import {
   Chip,
 } from "react-native-paper";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
 import { validateHierarchyRules } from "../../hooks/useTodos";
 import { usePossibleParents } from "../../hooks/queries/useTodosQueries";
@@ -382,7 +382,7 @@ const TodoFormModal = ({
       description: description.trim() || null,
       priority: priority,
       task_type: taskType,
-      due_date: dueDate ? dueDate.toISOString() : null,
+      due_date: dueDate ? format(startOfDay(dueDate), 'yyyy-MM-dd') : null,
     };
 
     // Only include parent_todo_id OR life_goal_id (not both)
