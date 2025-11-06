@@ -21,6 +21,7 @@ import { buildTaskTree } from "../../utils/taskHierarchy";
 import { startOfDay, isBefore } from "date-fns";
 import { logger } from "../../utils/logger";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import TutorialHighlight from "../../components/tutorial/TutorialHighlight";
 
 const BacklogScreen = () => {
   const navigation = useNavigation();
@@ -317,19 +318,21 @@ const BacklogScreen = () => {
 
       {/* History Button */}
       <View style={styles.historyButtonContainer}>
-        <TouchableOpacity
-          style={styles.historyButton}
-          onPress={handleHistoryPress}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons
-            name="history"
-            size={20}
-            color="#FFFFFF"
-            style={styles.historyButtonIcon}
-          />
-          <Text style={styles.historyButtonText}>History</Text>
-        </TouchableOpacity>
+        <TutorialHighlight stepId="backlog.historyButton">
+          <TouchableOpacity
+            style={styles.historyButton}
+            onPress={handleHistoryPress}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons
+              name="history"
+              size={20}
+              color="#FFFFFF"
+              style={styles.historyButtonIcon}
+            />
+            <Text style={styles.historyButtonText}>History</Text>
+          </TouchableOpacity>
+        </TutorialHighlight>
       </View>
 
       <FlatList
@@ -379,22 +382,29 @@ const BacklogScreen = () => {
         ListFooterComponent={
           hasMoreTaskGroups ? (
             <View style={styles.showMoreContainer}>
-              <TouchableOpacity
-                style={styles.showMoreButton}
-                onPress={handleShowOlderTasks}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons
-                  name="clock-outline"
-                  size={20}
-                  color="#FFFFFF"
-                  style={styles.showMoreIcon}
-                />
-                <Text style={styles.showMoreText}>Show older tasks</Text>
-              </TouchableOpacity>
+              <TutorialHighlight stepId="backlog.showOlder">
+                <TouchableOpacity
+                  style={styles.showMoreButton}
+                  onPress={handleShowOlderTasks}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="clock-outline"
+                    size={20}
+                    color="#FFFFFF"
+                    style={styles.showMoreIcon}
+                  />
+                  <Text style={styles.showMoreText}>Show older tasks</Text>
+                </TouchableOpacity>
+              </TutorialHighlight>
             </View>
           ) : null
         }
+        ListHeaderComponent={() => (
+          <TutorialHighlight stepId="backlog.taskGroups">
+            <View />
+          </TutorialHighlight>
+        )}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

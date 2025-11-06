@@ -21,6 +21,9 @@ import { logger } from "./src/utils/logger";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import MainAppTabs from "./src/navigation/MainAppTabs";
 import AuthStack from "./src/navigation/AuthStack";
+import { TutorialProvider } from "./src/context/TutorialContext";
+import TutorialPromptModal from "./src/components/tutorial/TutorialPromptModal";
+import { navigationRef } from "./src/navigation/navigationRef";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -209,7 +212,7 @@ const AppContent = ({ fontsLoaded, theme }) => {
 
         // Setup global fonts for Text and TextInput components
         try {
-          setupGlobalFonts();
+        setupGlobalFonts();
           logger.log("[App] Global fonts setup completed");
         } catch (error) {
           logger.error("[App] Failed to setup global fonts:", {
@@ -250,8 +253,11 @@ const AppContent = ({ fontsLoaded, theme }) => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
+      <TutorialProvider>
       <RootNavigator />
+        <TutorialPromptModal />
+      </TutorialProvider>
       <StatusBar style="auto" />
     </NavigationContainer>
   );

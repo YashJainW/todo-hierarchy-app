@@ -2,22 +2,23 @@ import React, { useState, useEffect } from "react";
 import { View, ScrollView, StyleSheet, Alert, Text } from "react-native";
 import {
   Card,
-  Title,
   TextInput,
   Button,
   Divider,
   List,
   ActivityIndicator,
-  Switch,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import supabase from "../../lib/supabase";
 import { format } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 const ProfileScreen = () => {
-  const { user, updateProfile, updatePassword, signOut } = useAuth();
+  const navigation = useNavigation();
+  const { user, updateProfile, signOut } = useAuth();
 
   // Profile state
   const [username, setUsername] = useState("");
@@ -28,19 +29,6 @@ const ProfileScreen = () => {
   const [saving, setSaving] = useState(false);
   const [profileError, setProfileError] = useState(null);
   const [profileSuccess, setProfileSuccess] = useState(false);
-
-  // Password change state
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState(null);
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-
-  // Auto-deletion settings
-  const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(false);
-  const [autoDeleteDays, setAutoDeleteDays] = useState("30");
-  const MAX_DAYS = 365;
 
   // Statistics state
   const [stats, setStats] = useState({
@@ -97,12 +85,6 @@ const ProfileScreen = () => {
         setInitialFullName(fetchedFullName);
       }
 
-      // Load auto-delete settings from user metadata
-      const meta = user?.user_metadata || {};
-      const enabled = Boolean(meta.autoDeleteEnabled);
-      const daysVal = Number(meta.autoDeleteDays) || 30;
-      setAutoDeleteEnabled(enabled);
-      setAutoDeleteDays(String(Math.min(daysVal, MAX_DAYS)));
     } catch (error) {
       console.error("Error fetching profile:", error);
       // Fallback to user metadata
@@ -177,16 +159,13 @@ const ProfileScreen = () => {
         }
       }
 
-      // Also update user metadata
-      let daysNum = Number(autoDeleteDays) || 0;
-      if (daysNum < 0) daysNum = 0;
-      if (daysNum > MAX_DAYS) daysNum = MAX_DAYS;
-
+      // Also update user metadata (preserve existing settings)
+      const meta = user?.user_metadata || {};
       const result = await updateProfile({
         username: username.trim(),
         full_name: fullName.trim() || null,
-        autoDeleteEnabled: autoDeleteEnabled,
-        autoDeleteDays: daysNum,
+        autoDeleteEnabled: meta.autoDeleteEnabled || false,
+        autoDeleteDays: meta.autoDeleteDays || 30,
       });
 
       if (result.error) {
@@ -214,70 +193,6 @@ const ProfileScreen = () => {
     );
   };
 
-  // Check if password form has changes
-  const hasPasswordChanges = () => {
-    const hasAll =
-      currentPassword.trim().length > 0 &&
-      newPassword.trim().length >= 6 &&
-      confirmPassword.trim().length >= 6 &&
-      newPassword.trim() === confirmPassword.trim();
-    return hasAll;
-  };
-
-  const handlePasswordChange = async () => {
-    setPasswordError(null);
-    setPasswordSuccess(false);
-
-    if (!currentPassword.trim()) {
-      setPasswordError("Current password is required");
-      return;
-    }
-
-    // Validation
-    if (newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords do not match");
-      return;
-    }
-
-    setChangingPassword(true);
-
-    try {
-      // Verify current password by signing in
-      const { error: reauthError } = await supabase.auth.signInWithPassword({
-        email: user?.email || "",
-        password: currentPassword,
-      });
-
-      if (reauthError) {
-        setPasswordError("Current password is incorrect");
-        setChangingPassword(false);
-        return;
-      }
-
-      const result = await updatePassword(newPassword);
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      setPasswordSuccess(true);
-      // Clear form after successful password change
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setTimeout(() => setPasswordSuccess(false), 3000);
-    } catch (error) {
-      console.error("Error changing password:", error);
-      setPasswordError(error.message || "Failed to change password");
-    } finally {
-      setChangingPassword(false);
-    }
-  };
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -393,137 +308,17 @@ const ProfileScreen = () => {
 
         <Divider style={styles.divider} />
 
-      {/* Auto Deletion Settings */}
-      <Card style={styles.card} mode="elevated" elevation={2}>
-        <LinearGradient
-          colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.gradientHeader}
+        {/* Settings Button */}
+        <Button
+          mode="contained"
+          onPress={() => navigation.navigate("Settings")}
+          style={styles.settingsButton}
+          icon={() => (
+            <MaterialCommunityIcons name="cog" size={20} color="#fff" />
+          )}
         >
-          <Text style={styles.gradientTitle}>Auto Delete Completed Todos</Text>
-        </LinearGradient>
-        <Card.Content style={styles.cardContent}>
-          <List.Item
-            title="Enable Auto Deletion"
-            description="Delete completed todo trees older than the configured days"
-            right={() => (
-              <Switch value={autoDeleteEnabled} onValueChange={setAutoDeleteEnabled} />
-            )}
-            style={styles.statItem}
-            titleStyle={styles.listItemTitle}
-            descriptionStyle={styles.listItemDescription}
-          />
-          <Divider style={styles.divider} />
-          <TextInput
-            label="Delete items older than (days)"
-            mode="outlined"
-            keyboardType="numeric"
-            value={autoDeleteDays}
-            onChangeText={(t) => setAutoDeleteDays(t.replace(/[^0-9]/g, ""))}
-            right={<TextInput.Affix text="days" />}
-            style={styles.input}
-            disabled={!autoDeleteEnabled}
-          />
-          <Text style={styles.warningText}>
-            Maximum retention is 365 days. Items older than 1 year are deleted automatically.
-          </Text>
-          <Button
-            mode="contained"
-            onPress={handleProfileUpdate}
-            style={styles.updateButton}
-            loading={saving}
-            disabled={saving}
-          >
-            Save Settings
-          </Button>
-        </Card.Content>
-      </Card>
-
-        {/* Password Change Section */}
-        <Card style={styles.card} mode="elevated" elevation={2}>
-          <LinearGradient
-            colors={["#3B1CB0", "#5A2DFF", "#8C4BFF"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientHeader}
-          >
-            <Text style={styles.gradientTitle}>Change Password</Text>
-          </LinearGradient>
-          <Card.Content style={styles.cardContent}>
-            {/* Current Password */}
-            <TextInput
-              label="Current Password"
-              value={currentPassword}
-              onChangeText={(text) => {
-                setCurrentPassword(text);
-                setPasswordError(null);
-              }}
-              mode="outlined"
-              secureTextEntry
-              style={styles.input}
-              disabled={changingPassword}
-              textColor="#000000"
-              activeOutlineColor="#6200ee"
-              outlineColor="#CCCCCC"
-            />
-
-            {/* New Password */}
-            <TextInput
-              label="New Password"
-              value={newPassword}
-              onChangeText={(text) => {
-                setNewPassword(text);
-                setPasswordError(null);
-              }}
-              mode="outlined"
-              secureTextEntry
-              style={styles.input}
-              disabled={changingPassword}
-              textColor="#000000"
-              activeOutlineColor="#6200ee"
-              outlineColor="#CCCCCC"
-            />
-
-            {/* Confirm Password */}
-            <TextInput
-              label="Confirm New Password"
-              value={confirmPassword}
-              onChangeText={(text) => {
-                setConfirmPassword(text);
-                setPasswordError(null);
-              }}
-              mode="outlined"
-              secureTextEntry
-              style={styles.input}
-              disabled={changingPassword}
-              textColor="#000000"
-              activeOutlineColor="#6200ee"
-              outlineColor="#CCCCCC"
-            />
-
-            {/* Error/Success Messages */}
-            {passwordError && (
-              <Text style={styles.errorText}>{passwordError}</Text>
-            )}
-            {passwordSuccess && (
-              <Text style={styles.successText}>
-                Password changed successfully!
-              </Text>
-            )}
-
-            {/* Update Password Button */}
-            <Button
-              mode="contained"
-              onPress={handlePasswordChange}
-              loading={changingPassword}
-              disabled={changingPassword || !hasPasswordChanges()}
-              style={styles.updateButton}
-            >
-              Change Password
-            </Button>
-          </Card.Content>
-        </Card>
+          Settings
+        </Button>
 
         <Divider style={styles.divider} />
 
@@ -664,6 +459,10 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     paddingTop: 16,
+  },
+  settingsButton: {
+    marginTop: 8,
+    marginBottom: 8,
   },
 });
 

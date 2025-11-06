@@ -31,6 +31,7 @@ import {
 import { useGoalTasks } from "../../hooks/queries/useTodosQueries";
 import supabase from "../../lib/supabase";
 import { format } from "date-fns";
+import TutorialHighlight from "../../components/tutorial/TutorialHighlight";
 
 const LifeGoalsScreen = () => {
   const navigation = useNavigation();
@@ -73,26 +74,28 @@ const LifeGoalsScreen = () => {
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => handleOpenModal()}
-          style={styles.headerButton}
-          disabled={
-            createGoalMutation.isPending || updateGoalMutation.isPending
-          }
-        >
-          <LinearGradient
-            colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.headerButtonGradient}
+        <TutorialHighlight stepId="goals.create">
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => handleOpenModal()}
+            style={styles.headerButton}
+            disabled={
+              createGoalMutation.isPending || updateGoalMutation.isPending
+            }
           >
-            <View style={styles.headerButtonContent}>
-              <Text style={styles.headerButtonPlus}>＋</Text>
-              <Text style={styles.headerButtonLabel}>Create Goal</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.headerButtonGradient}
+            >
+              <View style={styles.headerButtonContent}>
+                <Text style={styles.headerButtonPlus}>＋</Text>
+                <Text style={styles.headerButtonLabel}>Create Goal</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </TutorialHighlight>
       ),
     });
   }, [navigation, createGoalMutation.isPending, updateGoalMutation.isPending]);

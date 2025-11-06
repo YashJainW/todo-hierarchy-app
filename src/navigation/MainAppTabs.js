@@ -10,6 +10,8 @@ import StatsScreen from "../screens/stats/StatsScreen";
 import LifeGoalsScreen from "../screens/goals/LifeGoalsScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 import TaskHistoryScreen from "../screens/history/TaskHistoryScreen";
+import SettingsScreen from "../screens/settings/SettingsScreen";
+import SwipeableTabWrapper from "../components/navigation/SwipeableTabWrapper";
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -60,7 +62,6 @@ const MainAppTabsContent = () => {
     >
       <Tab.Screen
         name="Do It"
-        component={DashboardScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
@@ -70,10 +71,15 @@ const MainAppTabsContent = () => {
             />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabWrapper tabName="Do It">
+            <DashboardScreen {...props} />
+          </SwipeableTabWrapper>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Backlog"
-        component={BacklogScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
@@ -83,10 +89,15 @@ const MainAppTabsContent = () => {
             />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabWrapper tabName="Backlog">
+            <BacklogScreen {...props} />
+          </SwipeableTabWrapper>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Stats"
-        component={StatsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
@@ -96,10 +107,15 @@ const MainAppTabsContent = () => {
             />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabWrapper tabName="Stats">
+            <StatsScreen {...props} />
+          </SwipeableTabWrapper>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Goals"
-        component={LifeGoalsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
@@ -109,16 +125,27 @@ const MainAppTabsContent = () => {
             />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabWrapper tabName="Goals">
+            <LifeGoalsScreen {...props} />
+          </SwipeableTabWrapper>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account" size={size} color={color} />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabWrapper tabName="Profile">
+            <ProfileScreen {...props} />
+          </SwipeableTabWrapper>
+        )}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 };
@@ -136,6 +163,22 @@ const MainAppTabs = () => {
         component={TaskHistoryScreen}
         options={{
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          headerShown: true,
+          title: "Settings",
+          headerStyle: {
+            backgroundColor: "#3B1CB0",
+          },
+          headerTintColor: "#ffffff",
+          headerTitleStyle: {
+            fontFamily: "Quicksand-Bold",
+            color: "#ffffff",
+          },
         }}
       />
     </Stack.Navigator>

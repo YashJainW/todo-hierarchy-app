@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import TutorialHighlight from "../../components/tutorial/TutorialHighlight";
 import { useDashboardTasks } from "../../hooks/queries/useTodosQueries";
 import {
   useUpdateTodoMutation,
@@ -85,15 +86,18 @@ const DashboardScreen = () => {
   useEffect(() => {
     navigation.setOptions({
       headerTitle: () => (
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={handleHeaderTitlePress}
-          style={styles.headerTitleButton}
-        >
-          <Text style={styles.headerTitleText}>Do It</Text>
-        </TouchableOpacity>
+        <TutorialHighlight stepId="dashboard.headerTitle">
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleHeaderTitlePress}
+            style={styles.headerTitleButton}
+          >
+            <Text style={styles.headerTitleText}>Do It</Text>
+          </TouchableOpacity>
+        </TutorialHighlight>
       ),
       headerRight: () => (
+        <TutorialHighlight stepId="dashboard.newTaskBtn">
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={openNewTaskModal}
@@ -111,6 +115,7 @@ const DashboardScreen = () => {
             </View>
           </LinearGradient>
         </TouchableOpacity>
+        </TutorialHighlight>
       ),
     });
   }, [navigation, handleHeaderTitlePress]);
@@ -413,33 +418,33 @@ const DashboardScreen = () => {
     const stats = getSummaryStats();
     return (
       <View>
-        <LinearGradient
-          colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.headerGradient}
-        >
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, styles.statNumberLight]}>
-                {stats.total}
-              </Text>
-              <Text style={styles.statLabelLight}>Total</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, styles.statNumberLight]}>
-                {stats.completed}
-              </Text>
-              <Text style={styles.statLabelLight}>Completed</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, styles.statNumberLight]}>
-                {stats.inProgress}
-              </Text>
-              <Text style={styles.statLabelLight}>In Progress</Text>
-            </View>
+      <LinearGradient
+        colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.headerGradient}
+      >
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
+              {stats.total}
+            </Text>
+            <Text style={styles.statLabelLight}>Total</Text>
           </View>
-        </LinearGradient>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
+              {stats.completed}
+            </Text>
+            <Text style={styles.statLabelLight}>Completed</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, styles.statNumberLight]}>
+              {stats.inProgress}
+            </Text>
+            <Text style={styles.statLabelLight}>In Progress</Text>
+          </View>
+        </View>
+      </LinearGradient>
 
         {/* Date Selection Section */}
         <LinearGradient
@@ -465,21 +470,23 @@ const DashboardScreen = () => {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={handleDatePickerOpen}
-              style={styles.dateDisplayButton}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.dateDisplayText}>
-                {formatSelectedDate(selectedDate)}
-              </Text>
-              <MaterialCommunityIcons
-                name="calendar"
-                size={20}
-                color="#5A2DFF"
-                style={styles.calendarIcon}
-              />
-            </TouchableOpacity>
+            <TutorialHighlight stepId="dashboard.dateSelector">
+              <TouchableOpacity
+                onPress={handleDatePickerOpen}
+                style={styles.dateDisplayButton}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dateDisplayText}>
+                  {formatSelectedDate(selectedDate)}
+                </Text>
+                <MaterialCommunityIcons
+                  name="calendar"
+                  size={20}
+                  color="#5A2DFF"
+                  style={styles.calendarIcon}
+                />
+              </TouchableOpacity>
+            </TutorialHighlight>
 
             <TouchableOpacity
               onPress={() => handleDateNavigation("forward")}
@@ -530,39 +537,39 @@ const DashboardScreen = () => {
                 <ActivityIndicator size="small" color="#6200ee" />
               </View>
             ) : (
-              <Menu
-                visible={menuVisible[item.id] || false}
-                onDismiss={() =>
-                  setMenuVisible({ ...menuVisible, [item.id]: false })
-                }
-                anchor={
-                  <IconButton
-                    {...props}
-                    icon="dots-vertical"
-                    onPress={() =>
-                      setMenuVisible({ ...menuVisible, [item.id]: true })
-                    }
-                  />
-                }
-              >
-                <Menu.Item
-                  onPress={() => {
-                    setMenuVisible({ ...menuVisible, [item.id]: false });
-                    handleEdit(item);
-                  }}
-                  title="Edit"
-                  leadingIcon="pencil"
+            <Menu
+              visible={menuVisible[item.id] || false}
+              onDismiss={() =>
+                setMenuVisible({ ...menuVisible, [item.id]: false })
+              }
+              anchor={
+                <IconButton
+                  {...props}
+                  icon="dots-vertical"
+                  onPress={() =>
+                    setMenuVisible({ ...menuVisible, [item.id]: true })
+                  }
                 />
-                <Menu.Item
-                  onPress={() => {
-                    setMenuVisible({ ...menuVisible, [item.id]: false });
-                    handleDelete(item);
-                  }}
-                  title="Delete"
-                  leadingIcon="delete"
-                  titleStyle={{ color: "#B00020" }}
-                />
-              </Menu>
+              }
+            >
+              <Menu.Item
+                onPress={() => {
+                  setMenuVisible({ ...menuVisible, [item.id]: false });
+                  handleEdit(item);
+                }}
+                title="Edit"
+                leadingIcon="pencil"
+              />
+              <Menu.Item
+                onPress={() => {
+                  setMenuVisible({ ...menuVisible, [item.id]: false });
+                  handleDelete(item);
+                }}
+                title="Delete"
+                leadingIcon="delete"
+                titleStyle={{ color: "#B00020" }}
+              />
+            </Menu>
             )
           )}
         />
@@ -667,6 +674,11 @@ const DashboardScreen = () => {
             : styles.listContainer
         }
         ListHeaderComponent={ListHeaderComponent}
+        ListFooterComponent={() => (
+          <TutorialHighlight stepId="dashboard.taskGroups">
+            <View style={{ height: 1 }} />
+          </TutorialHighlight>
+        )}
         ListEmptyComponent={
           !isLoading ? (
             <View style={styles.emptyMessageContainer}>
