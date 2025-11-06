@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   FlatList,
   View,
@@ -51,6 +51,7 @@ const DashboardScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState({});
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
 
   // Date selection state
   const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
@@ -76,8 +77,22 @@ const DashboardScreen = () => {
     setModalVisible(true);
   };
 
+  const handleHeaderTitlePress = useCallback(() => {
+    // Reset date to today
+    setSelectedDate(startOfDay(new Date()));
+  }, []);
+
   useEffect(() => {
     navigation.setOptions({
+      headerTitle: () => (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={handleHeaderTitlePress}
+          style={styles.headerTitleButton}
+        >
+          <Text style={styles.headerTitleText}>Do It</Text>
+        </TouchableOpacity>
+      ),
       headerRight: () => (
         <TouchableOpacity
           activeOpacity={0.9}
@@ -98,7 +113,7 @@ const DashboardScreen = () => {
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  }, [navigation, handleHeaderTitlePress]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -112,8 +127,15 @@ const DashboardScreen = () => {
   };
 
   const handleDelete = async (todo) => {
-    // Use mutation hook - it handles errors and refetching automatically
-    deleteTodoMutation.mutate({ id: todo.id, showAlert: true });
+    setDeletingTaskId(todo.id);
+    deleteTodoMutation.mutate(
+      { id: todo.id, showAlert: true },
+      {
+        onSettled: () => {
+          setDeletingTaskId(null);
+        },
+      }
+    );
   };
 
   const handleToggleComplete = (todo) => {
@@ -503,39 +525,45 @@ const DashboardScreen = () => {
             />
           )}
           right={(props) => (
-            <Menu
-              visible={menuVisible[item.id] || false}
-              onDismiss={() =>
-                setMenuVisible({ ...menuVisible, [item.id]: false })
-              }
-              anchor={
-                <IconButton
-                  {...props}
-                  icon="dots-vertical"
-                  onPress={() =>
-                    setMenuVisible({ ...menuVisible, [item.id]: true })
-                  }
+            deletingTaskId === item.id ? (
+              <View style={{ padding: 8 }}>
+                <ActivityIndicator size="small" color="#6200ee" />
+              </View>
+            ) : (
+              <Menu
+                visible={menuVisible[item.id] || false}
+                onDismiss={() =>
+                  setMenuVisible({ ...menuVisible, [item.id]: false })
+                }
+                anchor={
+                  <IconButton
+                    {...props}
+                    icon="dots-vertical"
+                    onPress={() =>
+                      setMenuVisible({ ...menuVisible, [item.id]: true })
+                    }
+                  />
+                }
+              >
+                <Menu.Item
+                  onPress={() => {
+                    setMenuVisible({ ...menuVisible, [item.id]: false });
+                    handleEdit(item);
+                  }}
+                  title="Edit"
+                  leadingIcon="pencil"
                 />
-              }
-            >
-              <Menu.Item
-                onPress={() => {
-                  setMenuVisible({ ...menuVisible, [item.id]: false });
-                  handleEdit(item);
-                }}
-                title="Edit"
-                leadingIcon="pencil"
-              />
-              <Menu.Item
-                onPress={() => {
-                  setMenuVisible({ ...menuVisible, [item.id]: false });
-                  handleDelete(item);
-                }}
-                title="Delete"
-                leadingIcon="delete"
-                titleStyle={{ color: "#B00020" }}
-              />
-            </Menu>
+                <Menu.Item
+                  onPress={() => {
+                    setMenuVisible({ ...menuVisible, [item.id]: false });
+                    handleDelete(item);
+                  }}
+                  title="Delete"
+                  leadingIcon="delete"
+                  titleStyle={{ color: "#B00020" }}
+                />
+              </Menu>
+            )
           )}
         />
         <Card.Content>
@@ -624,6 +652,7 @@ const DashboardScreen = () => {
               menuVisible={menuVisible}
               onMenuToggle={handleMenuToggle}
               getPriorityColor={getPriorityColor}
+              deletingTaskId={deletingTaskId}
             />
           );
         }}
@@ -904,6 +933,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Quicksand-Bold",
     letterSpacing: 0.3,
+  },
+  headerTitleButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerTitleText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontFamily: "Quicksand-Bold",
   },
 });
 

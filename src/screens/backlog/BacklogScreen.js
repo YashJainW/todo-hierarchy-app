@@ -32,6 +32,7 @@ const BacklogScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState({});
   const [visibleTaskGroupsCount, setVisibleTaskGroupsCount] = useState(5); // Initial task groups to show (5 groups)
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
 
   // Get today's date (at start of day for comparison)
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -48,7 +49,15 @@ const BacklogScreen = () => {
   };
 
   const handleDelete = async (todo) => {
-    deleteTodoMutation.mutate({ id: todo.id, showAlert: true });
+    setDeletingTaskId(todo.id);
+    deleteTodoMutation.mutate(
+      { id: todo.id, showAlert: true },
+      {
+        onSettled: () => {
+          setDeletingTaskId(null);
+        },
+      }
+    );
   };
 
   const handleToggleComplete = (todo) => {
@@ -343,6 +352,7 @@ const BacklogScreen = () => {
               menuVisible={menuVisible}
               onMenuToggle={handleMenuToggle}
               getPriorityColor={getPriorityColor}
+              deletingTaskId={deletingTaskId}
             />
           );
         }}

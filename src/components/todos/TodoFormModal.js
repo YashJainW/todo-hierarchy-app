@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   ScrollView,
   View,
@@ -46,6 +52,10 @@ const TodoFormModal = ({
   const [state, setState] = useState("not_started");
   const [dueDate, setDueDate] = useState(null);
   const [achievementNote, setAchievementNote] = useState("");
+  // Track cursor selections to keep caret stable while editing in the middle
+  const [taskNameSelection, setTaskNameSelection] = useState(null);
+  const [descriptionSelection, setDescriptionSelection] = useState(null);
+  const [achievementSelection, setAchievementSelection] = useState(null);
 
   // Parent selection state
   const [selectedParentId, setSelectedParentId] = useState(null);
@@ -73,49 +83,155 @@ const TodoFormModal = ({
   const [showParentChangeConfirm, setShowParentChangeConfirm] = useState(false);
   const [pendingParentChange, setPendingParentChange] = useState(null);
 
+  // Use refs to track if form has been initialized to prevent re-initialization during editing
+  const formInitializedRef = useRef(false);
+  const previousVisibleRef = useRef(false);
+  const previousExistingTodoIdRef = useRef(null);
+
+  // Memoize disabled state to prevent unnecessary re-renders
+  const isDisabled = useMemo(
+    () => createTodoMutation.isPending || updateTodoMutation.isPending,
+    [createTodoMutation.isPending, updateTodoMutation.isPending]
+  );
+
+  // Memoize onChange handlers to prevent TextInput re-renders
+  // Ensure values are always strings to prevent cursor position issues
+  const handleTaskNameChange = useCallback(
+    (text) => {
+      setTaskName((prev) => {
+        const prevText = typeof prev === "string" ? prev : "";
+        const nextText = text || "";
+        const delta = nextText.length - prevText.length;
+        if (taskNameSelection && typeof taskNameSelection.start === "number") {
+          const nextPos = Math.max(
+            0,
+            Math.min(nextText.length, taskNameSelection.start + delta)
+          );
+          setTaskNameSelection({ start: nextPos, end: nextPos });
+        }
+        return nextText;
+      });
+    },
+    [taskNameSelection]
+  );
+
+  const handleDescriptionChange = useCallback(
+    (text) => {
+      setDescription((prev) => {
+        const prevText = typeof prev === "string" ? prev : "";
+        const nextText = text || "";
+        const delta = nextText.length - prevText.length;
+        if (
+          descriptionSelection &&
+          typeof descriptionSelection.start === "number"
+        ) {
+          const nextPos = Math.max(
+            0,
+            Math.min(nextText.length, descriptionSelection.start + delta)
+          );
+          setDescriptionSelection({ start: nextPos, end: nextPos });
+        }
+        return nextText;
+      });
+    },
+    [descriptionSelection]
+  );
+
+  const handleAchievementNoteChange = useCallback(
+    (text) => {
+      setAchievementNote((prev) => {
+        const prevText = typeof prev === "string" ? prev : "";
+        const nextText = text || "";
+        const delta = nextText.length - prevText.length;
+        if (
+          achievementSelection &&
+          typeof achievementSelection.start === "number"
+        ) {
+          const nextPos = Math.max(
+            0,
+            Math.min(nextText.length, achievementSelection.start + delta)
+          );
+          setAchievementSelection({ start: nextPos, end: nextPos });
+        }
+        return nextText;
+      });
+    },
+    [achievementSelection]
+  );
+
+  const handleTaskNameFocus = useCallback(() => {
+    setErrors(null);
+  }, []);
+
   // Initialize form when existingTodo is provided
+  // Only initialize when modal becomes visible or when existingTodo changes
   useEffect(() => {
-    if (existingTodo && visible) {
-      setTaskName(existingTodo.task_name || existingTodo.title || "");
-      setDescription(existingTodo.description || "");
-      setPriority(existingTodo.priority || "medium");
-      setTaskType(existingTodo.task_type || "daily");
-      setState(existingTodo.state || "not_started");
-      setDueDate(
-        existingTodo.due_date ? new Date(existingTodo.due_date) : null
-      );
-      setAchievementNote(existingTodo.achievement_note || "");
+    const existingTodoId = existingTodo?.id;
+    const isModalJustOpened = visible && !previousVisibleRef.current;
+    const isTodoChanged = existingTodoId !== previousExistingTodoIdRef.current;
 
-      // Set parent based on what's available
-      // Check both mapped fields (parent_id, life_goal_id) and raw DB fields (parent_todo_id, parent_life_goal_id)
-      const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
-      const lifeGoalId =
-        existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
+    // Only initialize if:
+    // 1. Modal just opened (wasn't visible before)
+    // 2. Or existingTodo changed (different todo being edited)
+    // 3. Or form hasn't been initialized yet
+    if (
+      visible &&
+      (isModalJustOpened || isTodoChanged || !formInitializedRef.current)
+    ) {
+      if (existingTodo) {
+        setTaskName(existingTodo.task_name || existingTodo.title || "");
+        setDescription(existingTodo.description || "");
+        setPriority(existingTodo.priority || "medium");
+        setTaskType(existingTodo.task_type || "daily");
+        setState(existingTodo.state || "not_started");
+        setDueDate(
+          existingTodo.due_date ? new Date(existingTodo.due_date) : null
+        );
+        setAchievementNote(existingTodo.achievement_note || "");
 
-      if (parentId) {
-        setSelectedParentId(parentId);
-        setSelectedParentType("todo");
-        setSelectedParentValue(`todo:${parentId}`);
-        setPreviousParentId(parentId);
-        setPreviousParentType("todo");
-      } else if (lifeGoalId) {
-        setSelectedParentId(lifeGoalId);
-        setSelectedParentType("life_goal");
-        setSelectedParentValue(`life_goal:${lifeGoalId}`);
-        setPreviousParentId(lifeGoalId);
-        setPreviousParentType("life_goal");
+        // Set parent based on what's available
+        // Check both mapped fields (parent_id, life_goal_id) and raw DB fields (parent_todo_id, parent_life_goal_id)
+        const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
+        const lifeGoalId =
+          existingTodo.life_goal_id || existingTodo.parent_life_goal_id;
+
+        if (parentId) {
+          setSelectedParentId(parentId);
+          setSelectedParentType("todo");
+          setSelectedParentValue(`todo:${parentId}`);
+          setPreviousParentId(parentId);
+          setPreviousParentType("todo");
+        } else if (lifeGoalId) {
+          setSelectedParentId(lifeGoalId);
+          setSelectedParentType("life_goal");
+          setSelectedParentValue(`life_goal:${lifeGoalId}`);
+          setPreviousParentId(lifeGoalId);
+          setPreviousParentType("life_goal");
+        } else {
+          setSelectedParentId(null);
+          setSelectedParentType(null);
+          setSelectedParentValue(NO_PARENT_VALUE);
+          setPreviousParentId(null);
+          setPreviousParentType(null);
+        }
+        setErrors(null);
+        setUserChangedParent(false);
+        formInitializedRef.current = true;
+        previousExistingTodoIdRef.current = existingTodoId;
       } else {
-        setSelectedParentId(null);
-        setSelectedParentType(null);
-        setSelectedParentValue(NO_PARENT_VALUE);
-        setPreviousParentId(null);
-        setPreviousParentType(null);
+        // Reset form for new todo
+        resetForm();
+        formInitializedRef.current = true;
+        previousExistingTodoIdRef.current = null;
       }
-      setErrors(null);
-      setUserChangedParent(false);
-    } else if (!existingTodo && visible) {
-      // Reset form for new todo
-      resetForm();
+    }
+
+    // Track visibility state
+    previousVisibleRef.current = visible;
+
+    // Reset initialization flag when modal closes
+    if (!visible) {
+      formInitializedRef.current = false;
     }
   }, [existingTodo, visible]);
 
@@ -124,11 +240,18 @@ const TodoFormModal = ({
 
   // Re-sync parent selection after possibleParents are fetched
   // This ensures parent is set even if possibleParents list hasn't loaded yet
+  // Only runs during initial form load, not while user is editing
   useEffect(() => {
+    // Skip if form has already been initialized (user is editing)
+    if (formInitializedRef.current) {
+      return;
+    }
+
     // If user already changed the parent in this session, do not override it
     if (userChangedParent) {
       return;
     }
+
     if (existingTodo && visible) {
       const parentId = existingTodo.parent_id || existingTodo.parent_todo_id;
       const lifeGoalId =
@@ -142,12 +265,6 @@ const TodoFormModal = ({
         const selectedParentIdStr = selectedParentId?.toString();
 
         if (!selectedParentId || selectedParentIdStr !== parentIdStr) {
-          console.log("Setting parent from existingTodo:", {
-            parentId,
-            parentIdStr,
-            selectedParentId,
-            selectedParentIdStr,
-          });
           setSelectedParentId(parentIdStr);
           setSelectedParentType("todo");
           setSelectedParentValue(`todo:${parentIdStr}`);
@@ -165,12 +282,6 @@ const TodoFormModal = ({
         const selectedParentIdStr = selectedParentId?.toString();
 
         if (!selectedParentId || selectedParentIdStr !== lifeGoalIdStr) {
-          console.log("Setting life goal from existingTodo:", {
-            lifeGoalId,
-            lifeGoalIdStr,
-            selectedParentId,
-            selectedParentIdStr,
-          });
           setSelectedParentId(lifeGoalIdStr);
           setSelectedParentType("life_goal");
           setSelectedParentValue(`life_goal:${lifeGoalIdStr}`);
@@ -337,6 +448,10 @@ const TodoFormModal = ({
     if (!taskType) {
       return false;
     }
+    // Due date is mandatory
+    if (!dueDate) {
+      return false;
+    }
     // Check hierarchy validation
     if (selectedParentId && selectedParentType && taskType) {
       // Find the actual parent to get its task_type
@@ -367,9 +482,13 @@ const TodoFormModal = ({
   // Handle form submission
   const handleSubmit = async () => {
     if (!isFormValid()) {
-      setErrors(
-        "Please fill in all required fields and ensure valid hierarchy"
-      );
+      if (!dueDate) {
+        setErrors("Due date is required. Please select a due date.");
+      } else {
+        setErrors(
+          "Please fill in all required fields and ensure valid hierarchy"
+        );
+      }
       return;
     }
 
@@ -382,7 +501,7 @@ const TodoFormModal = ({
       description: description.trim() || null,
       priority: priority,
       task_type: taskType,
-      due_date: dueDate ? format(startOfDay(dueDate), 'yyyy-MM-dd') : null,
+      due_date: dueDate ? format(startOfDay(dueDate), "yyyy-MM-dd") : null,
     };
 
     // Only include parent_todo_id OR life_goal_id (not both)
@@ -524,30 +643,34 @@ const TodoFormModal = ({
             >
               {/* Task Name Input */}
               <TextInput
+                key="task-name-input"
                 label="Task Name *"
-                value={taskName}
-                onChangeText={setTaskName}
-                onFocus={() => {
-                  if (errors) setErrors(null);
-                }}
+                value={taskName || ""}
+                onChangeText={handleTaskNameChange}
+                onFocus={handleTaskNameFocus}
                 mode="outlined"
                 style={styles.input}
-                disabled={
-                  createTodoMutation.isPending || updateTodoMutation.isPending
+                disabled={isDisabled}
+                selection={taskNameSelection || undefined}
+                onSelectionChange={(e) =>
+                  setTaskNameSelection(e?.nativeEvent?.selection || null)
                 }
               />
 
               {/* Description Input */}
               <TextInput
+                key="description-input"
                 label="Description"
-                value={description}
-                onChangeText={setDescription}
+                value={description || ""}
+                onChangeText={handleDescriptionChange}
                 mode="outlined"
                 multiline
                 numberOfLines={3}
                 style={styles.input}
-                disabled={
-                  createTodoMutation.isPending || updateTodoMutation.isPending
+                disabled={isDisabled}
+                selection={descriptionSelection || undefined}
+                onSelectionChange={(e) =>
+                  setDescriptionSelection(e?.nativeEvent?.selection || null)
                 }
               />
 
@@ -671,7 +794,7 @@ const TodoFormModal = ({
               )}
 
               {/* Due Date Picker */}
-              <Text style={styles.label}>Due Date</Text>
+              <Text style={styles.label}>Due Date *</Text>
               <View style={styles.dateContainer}>
                 <Button
                   mode="outlined"
@@ -681,7 +804,7 @@ const TodoFormModal = ({
                     createTodoMutation.isPending || updateTodoMutation.isPending
                   }
                 >
-                  {dueDate ? format(dueDate, "PPP") : "Select Due Date"}
+                  {dueDate ? format(dueDate, "PPP") : "Select Due Date *"}
                 </Button>
                 {dueDate && (
                   <Button
@@ -697,6 +820,9 @@ const TodoFormModal = ({
                   </Button>
                 )}
               </View>
+              {!dueDate && (
+                <Text style={styles.requiredHint}>Due date is required</Text>
+              )}
 
               {/* Parent Selection */}
               <Text style={styles.label}>Parent Task/Goal</Text>
@@ -728,15 +854,18 @@ const TodoFormModal = ({
               {/* Achievement Note (if completed) */}
               {state === "completed" && (
                 <TextInput
+                  key="achievement-note-input"
                   label="Achievement Note"
-                  value={achievementNote}
-                  onChangeText={setAchievementNote}
+                  value={achievementNote || ""}
+                  onChangeText={handleAchievementNoteChange}
                   mode="outlined"
                   multiline
                   numberOfLines={3}
                   style={styles.input}
-                  disabled={
-                    createTodoMutation.isPending || updateTodoMutation.isPending
+                  disabled={isDisabled}
+                  selection={achievementSelection || undefined}
+                  onSelectionChange={(e) =>
+                    setAchievementSelection(e?.nativeEvent?.selection || null)
                   }
                 />
               )}
@@ -1066,6 +1195,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
     marginBottom: 8,
+  },
+  requiredHint: {
+    color: "#B00020",
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 16,
+    fontStyle: "italic",
   },
 });
 

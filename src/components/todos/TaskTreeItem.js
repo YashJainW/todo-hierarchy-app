@@ -8,6 +8,7 @@ import {
   ProgressBar,
   Menu,
   IconButton,
+  ActivityIndicator,
 } from "react-native-paper";
 import { format } from "date-fns";
 import { getAllDescendants } from "../../utils/taskHierarchy";
@@ -31,6 +32,7 @@ const TaskTreeNode = ({
   selectedLeafId = null, // Currently selected leaf (for persistent highlight)
   showEditOption = true,
   showDeleteOption = true,
+  deletingTaskId = null,
 }) => {
   // Check if this is a leaf task (no children)
   const hasChildren = task.children && task.children.length > 0;
@@ -310,33 +312,39 @@ const TaskTreeNode = ({
 
           {/* Actions Column (no visible button; opened via long-press) */}
           <View style={styles.actionsColumn}>
-            <Menu
-              visible={menuVisible[task.id] || false}
-              onDismiss={() => onMenuToggle(task.id, false)}
-              anchor={<View style={styles.menuAnchor} />}
-            >
-              {showEditOption && (
-                <Menu.Item
-                  onPress={() => {
-                    onMenuToggle(task.id, false);
-                    onEdit(task);
-                  }}
-                  title="Edit"
-                  leadingIcon="pencil"
-                />
-              )}
-              {showDeleteOption && (
-                <Menu.Item
-                  onPress={() => {
-                    onMenuToggle(task.id, false);
-                    onDelete(task);
-                  }}
-                  title="Delete"
-                  leadingIcon="delete"
-                  titleStyle={{ color: "#B00020" }}
-                />
-              )}
-            </Menu>
+            {deletingTaskId === task.id ? (
+              <View style={styles.deletingLoader}>
+                <ActivityIndicator size="small" color="#6200ee" />
+              </View>
+            ) : (
+              <Menu
+                visible={menuVisible[task.id] || false}
+                onDismiss={() => onMenuToggle(task.id, false)}
+                anchor={<View style={styles.menuAnchor} />}
+              >
+                {showEditOption && (
+                  <Menu.Item
+                    onPress={() => {
+                      onMenuToggle(task.id, false);
+                      onEdit(task);
+                    }}
+                    title="Edit"
+                    leadingIcon="pencil"
+                  />
+                )}
+                {showDeleteOption && (
+                  <Menu.Item
+                    onPress={() => {
+                      onMenuToggle(task.id, false);
+                      onDelete(task);
+                    }}
+                    title="Delete"
+                    leadingIcon="delete"
+                    titleStyle={{ color: "#B00020" }}
+                  />
+                )}
+              </Menu>
+            )}
           </View>
         </View>
       )}
@@ -368,6 +376,7 @@ const TaskTreeNode = ({
                   selectedLeafId={selectedLeafId}
                   showEditOption={showEditOption}
                   showDeleteOption={showDeleteOption}
+                  deletingTaskId={deletingTaskId}
                 />
               );
             })}
@@ -565,6 +574,12 @@ const styles = StyleSheet.create({
     minWidth: 35,
   },
   actionsColumn: {
+    width: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingRight: 8,
+  },
+  deletingLoader: {
     width: 48,
     justifyContent: "center",
     alignItems: "center",

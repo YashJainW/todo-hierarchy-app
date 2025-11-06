@@ -38,6 +38,7 @@ const TaskGroup = ({
   expandAllByDefault = false,
   showEditOption = true,
   showDeleteOption = true,
+  deletingTaskId = null,
 }) => {
   const [highlightedTaskId, setHighlightedTaskId] = useState(null);
 
@@ -126,6 +127,7 @@ const TaskGroup = ({
           selectedLeafId={selectedLeafId}
           showEditOption={showEditOption}
           showDeleteOption={showDeleteOption}
+          deletingTaskId={deletingTaskId}
         />
       </View>
     </View>

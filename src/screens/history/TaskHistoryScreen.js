@@ -30,6 +30,7 @@ const TaskHistoryScreen = () => {
   const [visibleDaysCount, setVisibleDaysCount] = useState(5); // Initial days to show (5 days)
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
 
   // Get today's date (at start of day for comparison)
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -219,7 +220,15 @@ const TaskHistoryScreen = () => {
   };
 
   const handleDelete = (todo) => {
-    deleteTodoMutation.mutate({ id: todo.id, showAlert: true });
+    setDeletingTaskId(todo.id);
+    deleteTodoMutation.mutate(
+      { id: todo.id, showAlert: true },
+      {
+        onSettled: () => {
+          setDeletingTaskId(null);
+        },
+      }
+    );
   };
 
   const handleMenuToggle = (taskId, visible) => {
@@ -262,6 +271,7 @@ const TaskHistoryScreen = () => {
             expandAllByDefault={true}
             showEditOption={false}
             showDeleteOption={true}
+            deletingTaskId={deletingTaskId}
           />
         ))}
       </View>
