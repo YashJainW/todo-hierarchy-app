@@ -98,23 +98,23 @@ const DashboardScreen = () => {
       ),
       headerRight: () => (
         <TutorialHighlight stepId="dashboard.newTaskBtn">
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={openNewTaskModal}
-          style={styles.headerButton}
-        >
-          <LinearGradient
-            colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.headerButtonGradient}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={openNewTaskModal}
+            style={styles.headerButton}
           >
-            <View style={styles.headerButtonContent}>
-              <Text style={styles.headerButtonPlus}>＋</Text>
-              <Text style={styles.headerButtonLabel}>New Task</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={["#8C4BFF", "#5A2DFF", "#3B1CB0"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.headerButtonGradient}
+            >
+              <View style={styles.headerButtonContent}>
+                <Text style={styles.headerButtonPlus}>＋</Text>
+                <Text style={styles.headerButtonLabel}>New Task</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
         </TutorialHighlight>
       ),
     });
@@ -213,20 +213,12 @@ const DashboardScreen = () => {
         return isSameDay(dueDate, selectedDate);
 
       case "weekly":
-        // Weekly: show if selected date is before or equal to due date AND in same week
-        return (
-          (isBefore(selectedDate, dueDate) ||
-            isSameDay(selectedDate, dueDate)) &&
-          isSameWeek(selectedDate, dueDate)
-        );
+        // Weekly: show if selected date is in the same week as due date (Monday to Sunday)
+        return isSameWeek(selectedDate, dueDate, { weekStartsOn: 1 });
 
       case "monthly":
-        // Monthly: show if selected date is before or equal to due date AND in same month
-        return (
-          (isBefore(selectedDate, dueDate) ||
-            isSameDay(selectedDate, dueDate)) &&
-          isSameMonth(selectedDate, dueDate)
-        );
+        // Monthly: show if selected date is in the same month as due date
+        return isSameMonth(selectedDate, dueDate);
 
       case "yearly":
         // Yearly: show if selected date is before or equal to due date AND in same year
@@ -418,33 +410,33 @@ const DashboardScreen = () => {
     const stats = getSummaryStats();
     return (
       <View>
-      <LinearGradient
-        colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.headerGradient}
-      >
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.total}
-            </Text>
-            <Text style={styles.statLabelLight}>Total</Text>
+        <LinearGradient
+          colors={["#3B1CB0", "#5A2DFF", "#7C4DFF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.total}
+              </Text>
+              <Text style={styles.statLabelLight}>Total</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.completed}
+              </Text>
+              <Text style={styles.statLabelLight}>Completed</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, styles.statNumberLight]}>
+                {stats.inProgress}
+              </Text>
+              <Text style={styles.statLabelLight}>In Progress</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.completed}
-            </Text>
-            <Text style={styles.statLabelLight}>Completed</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, styles.statNumberLight]}>
-              {stats.inProgress}
-            </Text>
-            <Text style={styles.statLabelLight}>In Progress</Text>
-          </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
 
         {/* Date Selection Section */}
         <LinearGradient
@@ -531,47 +523,47 @@ const DashboardScreen = () => {
               onPress={() => handleToggleComplete(item)}
             />
           )}
-          right={(props) => (
+          right={(props) =>
             deletingTaskId === item.id ? (
               <View style={{ padding: 8 }}>
                 <ActivityIndicator size="small" color="#6200ee" />
               </View>
             ) : (
-            <Menu
-              visible={menuVisible[item.id] || false}
-              onDismiss={() =>
-                setMenuVisible({ ...menuVisible, [item.id]: false })
-              }
-              anchor={
-                <IconButton
-                  {...props}
-                  icon="dots-vertical"
-                  onPress={() =>
-                    setMenuVisible({ ...menuVisible, [item.id]: true })
-                  }
+              <Menu
+                visible={menuVisible[item.id] || false}
+                onDismiss={() =>
+                  setMenuVisible({ ...menuVisible, [item.id]: false })
+                }
+                anchor={
+                  <IconButton
+                    {...props}
+                    icon="dots-vertical"
+                    onPress={() =>
+                      setMenuVisible({ ...menuVisible, [item.id]: true })
+                    }
+                  />
+                }
+              >
+                <Menu.Item
+                  onPress={() => {
+                    setMenuVisible({ ...menuVisible, [item.id]: false });
+                    handleEdit(item);
+                  }}
+                  title="Edit"
+                  leadingIcon="pencil"
                 />
-              }
-            >
-              <Menu.Item
-                onPress={() => {
-                  setMenuVisible({ ...menuVisible, [item.id]: false });
-                  handleEdit(item);
-                }}
-                title="Edit"
-                leadingIcon="pencil"
-              />
-              <Menu.Item
-                onPress={() => {
-                  setMenuVisible({ ...menuVisible, [item.id]: false });
-                  handleDelete(item);
-                }}
-                title="Delete"
-                leadingIcon="delete"
-                titleStyle={{ color: "#B00020" }}
-              />
-            </Menu>
+                <Menu.Item
+                  onPress={() => {
+                    setMenuVisible({ ...menuVisible, [item.id]: false });
+                    handleDelete(item);
+                  }}
+                  title="Delete"
+                  leadingIcon="delete"
+                  titleStyle={{ color: "#B00020" }}
+                />
+              </Menu>
             )
-          )}
+          }
         />
         <Card.Content>
           {item.priority && (
