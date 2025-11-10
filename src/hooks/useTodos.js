@@ -29,31 +29,40 @@ export const getPossibleParents = async (taskType, currentTodoId = null) => {
 
 // Validate hierarchy rules
 export const validateHierarchyRules = (taskType, parentType) => {
-  // daily can have: weekly todo, life goal
+  // daily can have: weekly, monthly, yearly todos, or life goal
   if (taskType === "daily") {
-    if (parentType === "weekly" || parentType === "life_goal") {
+    if (
+      parentType === "weekly" ||
+      parentType === "monthly" ||
+      parentType === "yearly" ||
+      parentType === "life_goal"
+    ) {
       return { isValid: true, message: "" };
     }
     return {
       isValid: false,
       message:
-        "Daily tasks can only have weekly todos or life goals as parents",
+        "Daily tasks can only have weekly, monthly, yearly todos or life goals as parents",
     };
   }
 
-  // weekly can have: monthly todo, life goal
+  // weekly can have: monthly, yearly todos, or life goal
   if (taskType === "weekly") {
-    if (parentType === "monthly" || parentType === "life_goal") {
+    if (
+      parentType === "monthly" ||
+      parentType === "yearly" ||
+      parentType === "life_goal"
+    ) {
       return { isValid: true, message: "" };
     }
     return {
       isValid: false,
       message:
-        "Weekly tasks can only have monthly todos or life goals as parents",
+        "Weekly tasks can only have monthly, yearly todos or life goals as parents",
     };
   }
 
-  // monthly can have: yearly todo, life goal
+  // monthly can have: yearly todo, or life goal
   if (taskType === "monthly") {
     if (parentType === "yearly" || parentType === "life_goal") {
       return { isValid: true, message: "" };

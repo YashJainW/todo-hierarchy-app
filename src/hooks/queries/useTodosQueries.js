@@ -138,8 +138,8 @@ export const useTodoChildren = (parentId) => {
  * Hook to fetch possible parents for a task
  * Used in TodoFormModal for parent selection
  * Uses the get_possible_parents RPC function which enforces hierarchy rules:
- * - daily → weekly todo, life goal
- * - weekly → monthly todo, life goal
+ * - daily → weekly, monthly, yearly todos, life goal
+ * - weekly → monthly, yearly todos, life goal
  * - monthly → yearly todo, life goal
  * - yearly → life goal only
  */

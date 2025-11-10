@@ -14,6 +14,7 @@ import {
   Modal,
   TouchableOpacity,
   FlatList,
+  TextInput as RNTextInput,
 } from "react-native";
 import {
   Portal,
@@ -52,10 +53,8 @@ const TodoFormModal = ({
   const [state, setState] = useState("not_started");
   const [dueDate, setDueDate] = useState(null);
   const [achievementNote, setAchievementNote] = useState("");
-  // Track cursor selections to keep caret stable while editing in the middle
-  const [taskNameSelection, setTaskNameSelection] = useState(null);
-  const [descriptionSelection, setDescriptionSelection] = useState(null);
-  const [achievementSelection, setAchievementSelection] = useState(null);
+  // Force a one-time remount of inputs when initializing/resetting the form
+  const [formKey, setFormKey] = useState(0);
 
   // Parent selection state
   const [selectedParentId, setSelectedParentId] = useState(null);
@@ -94,70 +93,22 @@ const TodoFormModal = ({
     [createTodoMutation.isPending, updateTodoMutation.isPending]
   );
 
-  // Memoize onChange handlers to prevent TextInput re-renders
-  // Ensure values are always strings to prevent cursor position issues
-  const handleTaskNameChange = useCallback(
-    (text) => {
-      setTaskName((prev) => {
-        const prevText = typeof prev === "string" ? prev : "";
-        const nextText = text || "";
-        const delta = nextText.length - prevText.length;
-        if (taskNameSelection && typeof taskNameSelection.start === "number") {
-          const nextPos = Math.max(
-            0,
-            Math.min(nextText.length, taskNameSelection.start + delta)
-          );
-          setTaskNameSelection({ start: nextPos, end: nextPos });
-        }
-        return nextText;
-      });
-    },
-    [taskNameSelection]
-  );
+  // Simple onChange handlers - ensure text is always a string
+  const handleTaskNameChange = useCallback((text) => {
+    // Ensure text is always a string to prevent cursor position issues
+    const textValue = typeof text === "string" ? text : "";
+    setTaskName(textValue);
+  }, []);
 
-  const handleDescriptionChange = useCallback(
-    (text) => {
-      setDescription((prev) => {
-        const prevText = typeof prev === "string" ? prev : "";
-        const nextText = text || "";
-        const delta = nextText.length - prevText.length;
-        if (
-          descriptionSelection &&
-          typeof descriptionSelection.start === "number"
-        ) {
-          const nextPos = Math.max(
-            0,
-            Math.min(nextText.length, descriptionSelection.start + delta)
-          );
-          setDescriptionSelection({ start: nextPos, end: nextPos });
-        }
-        return nextText;
-      });
-    },
-    [descriptionSelection]
-  );
+  const handleDescriptionChange = useCallback((text) => {
+    const textValue = typeof text === "string" ? text : "";
+    setDescription(textValue);
+  }, []);
 
-  const handleAchievementNoteChange = useCallback(
-    (text) => {
-      setAchievementNote((prev) => {
-        const prevText = typeof prev === "string" ? prev : "";
-        const nextText = text || "";
-        const delta = nextText.length - prevText.length;
-        if (
-          achievementSelection &&
-          typeof achievementSelection.start === "number"
-        ) {
-          const nextPos = Math.max(
-            0,
-            Math.min(nextText.length, achievementSelection.start + delta)
-          );
-          setAchievementSelection({ start: nextPos, end: nextPos });
-        }
-        return nextText;
-      });
-    },
-    [achievementSelection]
-  );
+  const handleAchievementNoteChange = useCallback((text) => {
+    const textValue = typeof text === "string" ? text : "";
+    setAchievementNote(textValue);
+  }, []);
 
   const handleTaskNameFocus = useCallback(() => {
     setErrors(null);
@@ -224,6 +175,8 @@ const TodoFormModal = ({
         formInitializedRef.current = true;
         previousExistingTodoIdRef.current = null;
       }
+      // Force remount of uncontrolled inputs after initialization
+      setFormKey((k) => k + 1);
     }
 
     // Track visibility state
@@ -326,6 +279,8 @@ const TodoFormModal = ({
     setPreviousParentType(null);
     setErrors(null);
     setUserChangedParent(false);
+    // Force remount of uncontrolled inputs after reset
+    setFormKey((k) => k + 1);
   };
 
   // Note: possibleParents is now fetched automatically by React Query via usePossibleParents hook
@@ -642,37 +597,33 @@ const TodoFormModal = ({
               bounces={false}
             >
               {/* Task Name Input */}
-              <TextInput
-                key="task-name-input"
-                label="Task Name *"
-                value={taskName || ""}
-                onChangeText={handleTaskNameChange}
-                onFocus={handleTaskNameFocus}
-                mode="outlined"
-                style={styles.input}
-                disabled={isDisabled}
-                selection={taskNameSelection || undefined}
-                onSelectionChange={(e) =>
-                  setTaskNameSelection(e?.nativeEvent?.selection || null)
-                }
-              />
+              <View style={styles.inputWrapper}>
+                <RNText style={styles.inputLabel}>Task Name *</RNText>
+                <RNTextInput
+                  key={`taskName-${formKey}`}
+                  defaultValue={taskName}
+                  onChangeText={handleTaskNameChange}
+                  onFocus={handleTaskNameFocus}
+                  style={styles.nativeInput}
+                  editable={!isDisabled}
+                  placeholder="Enter task name"
+                />
+              </View>
 
               {/* Description Input */}
-              <TextInput
-                key="description-input"
-                label="Description"
-                value={description || ""}
-                onChangeText={handleDescriptionChange}
-                mode="outlined"
-                multiline
-                numberOfLines={3}
-                style={styles.input}
-                disabled={isDisabled}
-                selection={descriptionSelection || undefined}
-                onSelectionChange={(e) =>
-                  setDescriptionSelection(e?.nativeEvent?.selection || null)
-                }
-              />
+              <View style={styles.inputWrapper}>
+                <RNText style={styles.inputLabel}>Description</RNText>
+                <RNTextInput
+                  key={`description-${formKey}`}
+                  defaultValue={description}
+                  onChangeText={handleDescriptionChange}
+                  style={[styles.nativeInput, styles.nativeInputMultiline]}
+                  editable={!isDisabled}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Enter description"
+                />
+              </View>
 
               {/* Task Type Chips - Grid Layout */}
               <Text style={styles.label}>Task Type *</Text>
@@ -853,21 +804,19 @@ const TodoFormModal = ({
 
               {/* Achievement Note (if completed) */}
               {state === "completed" && (
-                <TextInput
-                  key="achievement-note-input"
-                  label="Achievement Note"
-                  value={achievementNote || ""}
-                  onChangeText={handleAchievementNoteChange}
-                  mode="outlined"
-                  multiline
-                  numberOfLines={3}
-                  style={styles.input}
-                  disabled={isDisabled}
-                  selection={achievementSelection || undefined}
-                  onSelectionChange={(e) =>
-                    setAchievementSelection(e?.nativeEvent?.selection || null)
-                  }
-                />
+                <View style={styles.inputWrapper}>
+                  <RNText style={styles.inputLabel}>Achievement Note</RNText>
+                  <RNTextInput
+                    key={`achievement-${formKey}`}
+                    defaultValue={achievementNote}
+                    onChangeText={handleAchievementNoteChange}
+                    style={[styles.nativeInput, styles.nativeInputMultiline]}
+                    editable={!isDisabled}
+                    multiline
+                    numberOfLines={3}
+                    placeholder="Enter achievement note"
+                  />
+                </View>
               )}
 
               {/* Validation Errors */}
@@ -1034,6 +983,33 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 16,
+  },
+  inputWrapper: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "400",
+    marginBottom: 4,
+    color: "#666",
+    fontFamily: "Quicksand-Regular",
+  },
+  nativeInput: {
+    borderWidth: 1,
+    borderColor: "#BDBDBD",
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: "#FFFFFF",
+    color: "#000",
+    fontFamily: "Quicksand-Regular",
+    minHeight: 56,
+  },
+  nativeInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: "top",
+    paddingTop: 12,
   },
   label: {
     fontSize: 14,

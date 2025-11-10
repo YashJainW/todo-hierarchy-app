@@ -37,9 +37,10 @@ export const STATE_COLORS = {
 };
 
 // Hierarchy rules
+// Tasks can have any parent that is above their category in the hierarchy
 export const PARENT_RULES = {
-  daily: ["weekly"],
-  weekly: ["monthly"],
+  daily: ["weekly", "monthly", "yearly"],
+  weekly: ["monthly", "yearly"],
   monthly: ["yearly"],
   yearly: [],
 };

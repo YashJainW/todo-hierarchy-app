@@ -166,9 +166,9 @@ GRANT EXECUTE ON FUNCTION get_hierarchy_stats() TO authenticated;
 -- ============================================================================
 -- Function: get_possible_parents
 -- Returns valid parent options (todos and life_goals) for a given task type
--- Based on hierarchy rules:
---   daily → weekly todo, life goal
---   weekly → monthly todo, life goal
+-- Based on hierarchy rules (tasks can have any parent above their category):
+--   daily → weekly, monthly, yearly todos, life goal
+--   weekly → monthly, yearly todos, life goal
 --   monthly → yearly todo, life goal
 --   yearly → life goal only
 -- ============================================================================
@@ -194,10 +194,14 @@ BEGIN
   RETURN QUERY
   WITH valid_todo_types AS (
     SELECT unnest(
-      CASE task_type_param
-        WHEN 'daily' THEN ARRAY['weekly']::text[]
-        WHEN 'weekly' THEN ARRAY['monthly']::text[]
+      CASE LOWER(task_type_param)
+        -- daily can have: weekly, monthly, yearly
+        WHEN 'daily' THEN ARRAY['weekly', 'monthly', 'yearly']::text[]
+        -- weekly can have: monthly, yearly
+        WHEN 'weekly' THEN ARRAY['monthly', 'yearly']::text[]
+        -- monthly can have: yearly
         WHEN 'monthly' THEN ARRAY['yearly']::text[]
+        -- yearly can have: none (only life goals)
         WHEN 'yearly' THEN ARRAY[]::text[]
         ELSE ARRAY[]::text[]
       END
@@ -213,7 +217,7 @@ BEGIN
       'todo'::text as type
     FROM todos t
     WHERE t.user_id = auth.uid()
-      AND EXISTS (SELECT 1 FROM valid_todo_types WHERE allowed_type = t.task_type)
+      AND EXISTS (SELECT 1 FROM valid_todo_types WHERE LOWER(allowed_type) = LOWER(t.task_type))
       AND (current_todo_id IS NULL OR t.id != current_todo_id)
       AND t.state != 'completed' -- Usually don't want to add children to completed tasks
       AND t.task_name IS NOT NULL -- Ensure task_name exists
