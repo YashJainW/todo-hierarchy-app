@@ -191,14 +191,8 @@ const DashboardScreen = () => {
     return format(date, "MMM dd, yyyy");
   };
 
-  // Check if a leaf todo should be visible based on selected date
-  const shouldShowLeafTodo = (todo) => {
-    // Only filter leaf todos (todos without children)
-    const isLeafTodo = !todo.children_count || todo.children_count === 0;
-    if (!isLeafTodo) {
-      return false; // Non-leaf todos are filtered here, will be included if they have matching children
-    }
-
+  // Check if a task should be visible based on selected date and its period
+  const shouldShowTask = (todo) => {
     // Must have a due_date and task_type
     if (!todo.due_date || !todo.task_type) {
       return false;
@@ -221,16 +215,23 @@ const DashboardScreen = () => {
         return isSameMonth(selectedDate, dueDate);
 
       case "yearly":
-        // Yearly: show if selected date is before or equal to due date AND in same year
-        return (
-          (isBefore(selectedDate, dueDate) ||
-            isSameDay(selectedDate, dueDate)) &&
-          isSameYear(selectedDate, dueDate)
-        );
+        // Yearly: show if selected date is in the same year as due date
+        return isSameYear(selectedDate, dueDate);
 
       default:
         return false;
     }
+  };
+
+  // Check if a leaf todo should be visible based on selected date
+  const shouldShowLeafTodo = (todo) => {
+    // Only filter leaf todos (todos without children)
+    const isLeafTodo = !todo.children_count || todo.children_count === 0;
+    if (!isLeafTodo) {
+      return false; // Non-leaf todos are filtered here, will be included if they have matching children
+    }
+
+    return shouldShowTask(todo);
   };
 
   // Get all ancestor IDs of a task (parents, grandparents, etc.)
@@ -298,12 +299,30 @@ const DashboardScreen = () => {
         ancestors.forEach((id) => ancestorIds.add(id));
       });
 
-      // Step 3: Filter tasks to include:
+      // Step 3: Include weekly/monthly/yearly tasks that should be visible on this date
+      // (even if they don't have matching children on this specific day)
+      const periodTaskIds = new Set();
+      tasks.forEach((task) => {
+        const isLeafTodo = !task.children_count || task.children_count === 0;
+        if (!isLeafTodo) {
+          // This is a parent task (weekly/monthly/yearly)
+          if (shouldShowTask(task)) {
+            periodTaskIds.add(task.id?.toString() || task.id);
+          }
+        }
+      });
+
+      // Step 4: Filter tasks to include:
       // - All matching leaf todos
       // - All ancestors of matching leaf todos
+      // - All weekly/monthly/yearly tasks that should be visible on this date
       const filteredTasks = tasks.filter((task) => {
         const taskId = task.id?.toString() || task.id;
-        return matchingLeafTodoIds.has(taskId) || ancestorIds.has(taskId);
+        return (
+          matchingLeafTodoIds.has(taskId) ||
+          ancestorIds.has(taskId) ||
+          periodTaskIds.has(taskId)
+        );
       });
 
       console.log(
@@ -645,6 +664,7 @@ const DashboardScreen = () => {
             <TaskGroup
               key={item.id}
               rootTask={item}
+              allTasks={tasks}
               onToggleComplete={handleToggleComplete}
               onEdit={handleEdit}
               onDelete={handleDelete}

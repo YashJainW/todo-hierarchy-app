@@ -29,6 +29,8 @@ export const useCreateTodoMutation = () => {
       // Invalidate all related queries to refetch fresh data
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardTasks });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+      // Invalidate possibleParents queries so newly created tasks appear in parent dropdown
+      queryClient.invalidateQueries({ queryKey: ["possibleParents"] });
       // Refetch lifeGoals and goalTasks immediately if they're active
       queryClient.refetchQueries({ queryKey: queryKeys.lifeGoals });
       queryClient.refetchQueries({ queryKey: ["goalTasks"] });
@@ -429,6 +431,8 @@ export const useUpdateTodoMutation = () => {
       // update keeps that cache in sync. We still invalidate aggregated views
       // so their derived metrics stay accurate.
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+      // Invalidate possibleParents queries in case task type or state changed
+      queryClient.invalidateQueries({ queryKey: ["possibleParents"] });
       // Refetch lifeGoals and goalTasks immediately if they're active (screen is visible)
       queryClient.refetchQueries({ queryKey: queryKeys.lifeGoals });
       queryClient.refetchQueries({ queryKey: ["goalTasks"] });
@@ -477,6 +481,8 @@ export const useDeleteTodoMutation = () => {
       // Invalidate related queries to refetch fresh data
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardTasks });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+      // Invalidate possibleParents queries so deleted tasks are removed from parent dropdown
+      queryClient.invalidateQueries({ queryKey: ["possibleParents"] });
       // Refetch lifeGoals and goalTasks immediately if they're active
       queryClient.refetchQueries({ queryKey: queryKeys.lifeGoals });
       queryClient.refetchQueries({ queryKey: ["goalTasks"] });

@@ -29,6 +29,7 @@ const getAllTaskIds = (task) => {
  */
 const TaskGroup = ({
   rootTask,
+  allTasks,
   onToggleComplete,
   onEdit,
   onDelete,
@@ -113,6 +114,7 @@ const TaskGroup = ({
         {/* Render root and all leaf tasks */}
         <TaskTreeNode
           task={rootTask}
+          allTasks={allTasks}
           level={0}
           onToggleComplete={onToggleComplete}
           onEdit={onEdit}

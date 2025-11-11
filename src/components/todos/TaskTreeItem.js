@@ -18,6 +18,7 @@ import { getAllDescendants } from "../../utils/taskHierarchy";
  */
 const TaskTreeNode = ({
   task,
+  allTasks = [],
   level = 0,
   onToggleComplete,
   onEdit,
@@ -74,16 +75,56 @@ const TaskTreeNode = ({
   // Check if this task has a parent (not root level)
   const hasParent = level > 0;
 
-  // Calculate progress based on ALL descendant leaf tasks
-  // This ensures a parent (e.g., monthly/yearly) reflects deeper children (e.g., weekly/daily)
-  const descendants = getAllDescendants(task);
-  const leafDescendants = descendants.filter(
-    (node) => !node.children || node.children.length === 0
+  // Calculate progress across ALL descendant leaf tasks using the full task list (allTasks)
+  // so that parents (e.g., weekly) reflect the correct totals across days.
+  // We compute totals from allTasks for immediate responsiveness with optimistic updates.
+  const normalizeId = (id) => (id !== null && id !== undefined ? String(id) : null);
+  const parentIndex = React.useMemo(() => {
+    const index = new Map();
+    allTasks.forEach((t) => {
+      const parentId = normalizeId(t.parent_id || t.parent_todo_id);
+      if (!parentId) return;
+      if (!index.has(parentId)) index.set(parentId, []);
+      index.get(parentId).push(t);
+    });
+    return index;
+  }, [allTasks]);
+
+  const getDescendantsFromAllTasks = (rootId) => {
+    const collected = [];
+    const stack = [normalizeId(rootId)];
+    const visited = new Set();
+    while (stack.length) {
+      const currentId = stack.pop();
+      if (!currentId || visited.has(currentId)) continue;
+      visited.add(currentId);
+      const children = parentIndex.get(currentId) || [];
+      children.forEach((child) => {
+        collected.push(child);
+        stack.push(normalizeId(child.id));
+      });
+    }
+    return collected;
+  };
+
+  const descendantsAll = React.useMemo(
+    () => getDescendantsFromAllTasks(task.id),
+    [task.id, parentIndex]
   );
-  const totalTasks = leafDescendants.length;
-  const completedTasks = leafDescendants.filter(
+
+  const isLeafInAll = (node) => {
+    const nodeId = normalizeId(node?.id);
+    if (!nodeId) return true;
+    const children = parentIndex.get(nodeId);
+    return !children || children.length === 0;
+  };
+
+  const leafDescendantsAll = descendantsAll.filter(isLeafInAll);
+  const totalTasks = leafDescendantsAll.length;
+  const completedTasks = leafDescendantsAll.filter(
     (t) => t.state === "completed"
   ).length;
+
   let progress = totalTasks > 0 ? completedTasks / totalTasks : 0;
   // Clamp to [0, 1] to avoid any rendering glitches from rounding/precision
   if (Number.isNaN(progress)) progress = 0;
@@ -362,6 +403,7 @@ const TaskTreeNode = ({
                 <TaskTreeNode
                   key={`${child.id}-${level}`}
                   task={child}
+            allTasks={allTasks}
                   level={level + 1}
                   onToggleComplete={onToggleComplete}
                   onEdit={onEdit}
